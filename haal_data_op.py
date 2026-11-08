@@ -262,11 +262,16 @@ def run():
 
     for f in invoer:
         git("rm", "-q", str(f))
-    git("add", INST.name, ENC.name, STATUS.name)
-    if git("commit", "-q", "-m", "Data bijgewerkt").returncode == 0:
-        git("pull", "-q", "--rebase")
-        r = git("push", "-q")
-        print("Gepusht." if r.returncode == 0 else f"Pushen mislukt: {r.stderr.strip()}")
+    git("add", *(f.name for f in (INST, ENC, STATUS) if f.exists()))
+    r = git("commit", "-q", "-m", "Data bijgewerkt")
+    if r.returncode != 0:
+        print(f"Niets te committen: {(r.stdout + r.stderr).strip()[:200]}")
+        return
+    git("pull", "-q", "--rebase")
+    r = git("push", "-q")
+    print("Gepusht." if r.returncode == 0 else f"Pushen mislukt: {r.stderr.strip()}")
+    if r.returncode != 0:
+        sys.exit(1)  # anders gaat het SolarEdge-token verloren zonder dat je het merkt
 
 
 def nieuwe_sleutel():
