@@ -36,11 +36,16 @@ FRANK_Q = ("query MarketPrices($date: String!, $resolution: PriceResolution!){ m
 SE = "https://monitoringapi.solaredge.com"
 
 
+NAMEN = ("SOLAREDGE_API_KEY", "SOLAREDGE_SITE_ID", "ENERGIE_WACHTWOORD", "FRANK_EMAIL", "FRANK_WACHTWOORD")
+
+
 def lees_env():
-    if not ENV.exists():
-        return {}
-    regels = (r.split("=", 1) for r in ENV.read_text(encoding="utf-8").splitlines() if "=" in r and not r.startswith("#"))
-    return {k.strip(): v.strip().strip('"') for k, v in regels}
+    """.env op je pc; in GitHub Actions komen dezelfde namen uit de omgeving (Secrets)."""
+    env = {k: os.environ[k] for k in NAMEN if os.environ.get(k)}
+    if ENV.exists():
+        regels = (r.split("=", 1) for r in ENV.read_text(encoding="utf-8").splitlines() if "=" in r and not r.startswith("#"))
+        env.update({k.strip(): v.strip().strip('"') for k, v in regels})
+    return env
 
 
 def schrijf_env(**nieuw):
@@ -78,16 +83,43 @@ def uur_index(t):
     return dag * 24 + t.hour
 
 
-def get_json(url, data=None):
-    req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json", "User-Agent": "Energiebalans"})
-    with urllib.request.urlopen(req, timeout=60) as r:
+def get_json(url, data=None, token=None):
+    h = {"Content-Type": "application/json", "User-Agent": "Energiebalans"}
+    if token:
+        h["Authorization"] = f"Bearer {token}"
+    with urllib.request.urlopen(urllib.request.Request(url, data=data, headers=h), timeout=60) as r:
         return json.load(r)
 
 
+def frank(query, variables=None, token=None):
+    r = get_json(FRANK, json.dumps({"query": query, "variables": variables or {}}).encode(), token)
+    if r.get("errors"):
+        raise RuntimeError(r["errors"][0]["message"])
+    return r["data"]
+
+
 def frank_dag(d):
-    body = json.dumps({"operationName": "MarketPrices", "query": FRANK_Q,
-                       "variables": {"date": d.isoformat(), "resolution": "PT60M"}}).encode()
-    return get_json(FRANK, body)["data"]["marketPrices"]
+    return frank(FRANK_Q, {"date": d.isoformat(), "resolution": "PT60M"})["marketPrices"]
+
+
+def haal_frank_verbruik(email, ww, dagen):
+    """Eigen gasverbruik via je Frank-account (API is niet officieel gedocumenteerd)."""
+    token = frank("mutation Login($email: String!, $password: String!){ login(email:$email, password:$password){ authToken } }",
+                  {"email": email, "password": ww})["login"]["authToken"]
+    site = frank("query { userSites { reference } }", token=token)["userSites"][0]["reference"]
+    q = ("query P($date: String!, $siteReference: String!){ periodUsageAndCosts(date:$date, siteReference:$siteReference){"
+         " gas { usageTotal } } }")
+
+    def dag(d):
+        try:
+            return frank(q, {"date": d.isoformat(), "siteReference": site}, token)["periodUsageAndCosts"]["gas"]["usageTotal"]
+        except Exception:
+            return None  # bv. dag van voor je contract
+
+    with ThreadPoolExecutor(8) as pool:
+        per_dag = [v for v in pool.map(dag, dagen) if v is not None]
+    # 366 dagen opgehaald; schaal naar 365 zodat het een jaartotaal is.
+    return {"gas_m3": round(sum(per_dag) * 365 / len(per_dag)) if len(per_dag) > 300 else None, "gas_dagen": len(per_dag)}
 
 
 def haal_frank(dagen):
@@ -149,7 +181,14 @@ def haal_op():
         print("SolarEdge opbrengst en verbruik ...")
         data.update(haal_solaredge(key, site, start, eind))
     else:
-        print("Geen SolarEdge-gegevens in .env, alleen prijzen opgehaald.")
+        print("Geen SolarEdge-gegevens, alleen prijzen opgehaald.")
+    if env.get("FRANK_EMAIL") and env.get("FRANK_WACHTWOORD"):
+        print("Frank Energie eigen gasverbruik ...")
+        try:
+            data.update(haal_frank_verbruik(env["FRANK_EMAIL"], env["FRANK_WACHTWOORD"], dagen))
+            print(f"Gas: {data['gas_m3']} m³ per jaar ({data['gas_dagen']} dagen met data)")
+        except Exception as e:
+            print(f"Frank-verbruik mislukt: {e}")  # prijzen en SolarEdge gaan gewoon door
     tekst = json.dumps(data, separators=(",", ":"))
     UIT.parent.mkdir(exist_ok=True)
     UIT.write_text(tekst, encoding="utf-8")

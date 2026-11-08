@@ -1,0 +1,32 @@
+# Haalt elke ochtend de data op en zet hem versleuteld (energie.enc) in de repo.
+# Keys staan in Settings > Secrets and variables > Actions, nooit in de code of de logs.
+name: Data ophalen
+on:
+  schedule:
+    - cron: "30 5 * * *"
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency: data
+jobs:
+  data:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install cryptography
+      - name: Ophalen, versleutelen en pushen
+        env:
+          TZ: Europe/Amsterdam
+          SOLAREDGE_API_KEY: ${{ secrets.SOLAREDGE_API_KEY }}
+          SOLAREDGE_SITE_ID: ${{ secrets.SOLAREDGE_SITE_ID }}
+          FRANK_EMAIL: ${{ secrets.FRANK_EMAIL }}
+          FRANK_WACHTWOORD: ${{ secrets.FRANK_WACHTWOORD }}
+          ENERGIE_WACHTWOORD: ${{ secrets.ENERGIE_WACHTWOORD }}
+        run: |
+          test -n "$ENERGIE_WACHTWOORD" || { echo "Secret ENERGIE_WACHTWOORD ontbreekt"; exit 1; }
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          python haal_data_op.py

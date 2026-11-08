@@ -198,9 +198,13 @@ details.card[open]>summary::after{content:'\2212'}
       </ul>
     </div>
     <div class="card">
-      <h2>Hoe de koppeling straks loopt</h2>
-      <p style="margin-bottom:10px">Een webpagina als deze mag niet zelf bij die API's. Daarom haalt een klein script op jouw computer de data op en zet die als bestand klaar voor dit dashboard.</p>
-      <div class="flow"><span class="b">SolarEdge</span>+<span class="b">Frank</span>→<span class="b">script</span>→<span class="b">dashboard</span></div>
+      <h2>Hoe de koppeling loopt</h2>
+      <p style="margin-bottom:10px">Elke ochtend haalt GitHub de data op met je keys uit GitHub Secrets, versleutelt die met je wachtwoord en zet hem hier klaar. Je keys komen nooit in deze pagina.</p>
+      <div class="flow"><span class="b">SolarEdge</span>+<span class="b">Frank</span>→<span class="b">GitHub Actions</span>→<span class="b">versleuteld</span>→<span class="b">dashboard</span></div>
+      <ul>
+        <li><a href="https://github.com/hermanvandenberg/Energiebalans/settings/secrets/actions" target="_blank" rel="noopener">Keys instellen (GitHub Secrets)</a></li>
+        <li><a href="https://github.com/hermanvandenberg/Energiebalans/actions/workflows/data.yml" target="_blank" rel="noopener">Nu vernieuwen (Run workflow)</a></li>
+      </ul>
     </div>
     <form class="card" id="koppel" hidden>
       <h2>SolarEdge koppelen</h2>
@@ -770,6 +774,7 @@ function toon(d){
       if(d.energiebelasting!=null)S.eb=r4(d.energiebelasting/b);   // Frank geeft incl. btw
       if(d.inkoopkosten!=null)S.inkoop=r4(d.inkoopkosten/b);
       if(d.gasprijs!=null)S.gasPrice=r4(d.gasprijs);
+      if(d.gas_m3)S.gas=d.gas_m3;
       S.dataStamp=d.gemaakt;save();renderInputs();
     }
     var pill=$('#statusPill');pill.className='pill ok';

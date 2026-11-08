@@ -34,6 +34,18 @@ python haal_data_op.py --serve
 
 Open http://127.0.0.1:8000, tab Bronnen, vul API-key en site-ID in. Die komen in `.env` (staat in `.gitignore`). Daarna kan `python haal_data_op.py` ook zonder server. Het formulier werkt alleen op je eigen pc, niet op GitHub Pages.
 
+### Automatisch via GitHub (pc hoeft niet aan)
+
+`.github/workflows/data.yml` draait elke ochtend en haalt de data op met de keys uit **Settings → Secrets and variables → Actions**:
+
+| Secret | Waarde |
+|---|---|
+| `ENERGIE_WACHTWOORD` | wachtwoord waarmee de online pagina de data opent (verplicht) |
+| `SOLAREDGE_API_KEY`, `SOLAREDGE_SITE_ID` | uit het SolarEdge-monitoringportaal |
+| `FRANK_EMAIL`, `FRANK_WACHTWOORD` | je Frank-account, voor je eigen gasverbruik |
+
+Handmatig vernieuwen: tab Actions → Data ophalen → Run workflow. Lokaal werkt hetzelfde met deze namen in `.env`.
+
 ### Online je eigen data zien
 
 Vul in het formulier ook een wachtwoord in (minimaal 8 tekens). Het script versleutelt de data dan met AES-GCM als `energie.enc` en pusht dat bestand. Op GitHub staat alleen onleesbare data; de online pagina vraagt één keer het wachtwoord en bewaart op dat apparaat alleen de afgeleide sleutel. Je API-key gaat nooit online. Vereist `pip install cryptography`.
