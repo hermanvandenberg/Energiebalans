@@ -21,17 +21,20 @@ Het dashboard rekent nu met **voorbeeldprofielen** voor een heel jaar (opbrengst
 
 Zet de repository op privé als je geen openbare pagina wilt. Pages op een privé repository vraagt een betaald GitHub-abonnement. De pagina bevat geen persoonlijke gegevens, maar plaats later nooit API-keys in de repository.
 
-## Volgende stap: echte data
+## Echte data
 
-Een webpagina mag niet rechtstreeks bij de SolarEdge- of Frank-API. Plan:
+`haal_data_op.py` (alleen standaard-Python 3.11, geen pip nodig) haalt de laatste 366 dagen op en schrijft `data/energie.json`:
 
-1. Een klein script (Python) op je eigen computer haalt data op:
-   - SolarEdge Monitoring API: API-key en site-ID uit het monitoringportaal.
-   - Frank Energie: prijzen zijn openbaar, eigen verbruik vraagt inloggen.
-2. Het script schrijft `data/energie.json`.
-3. `index.html` leest dat bestand met `fetch('data/energie.json')` en vervangt de voorbeeldprofielen.
+- Frank Energie: uurprijzen stroom (openbaar), energiebelasting, inkoopkosten en gemiddelde gasprijs.
+- SolarEdge: opbrengst en verbruik per uur, en het piekvermogen (kWp).
 
-Bewaar API-keys in een `.env` bestand en zet dat in `.gitignore`.
+```
+python haal_data_op.py --serve
+```
+
+Open http://127.0.0.1:8000, tab Bronnen, vul API-key en site-ID in. Die komen in `.env` (staat in `.gitignore`). Daarna kan `python haal_data_op.py` ook zonder server. Het formulier werkt alleen op je eigen pc, niet op GitHub Pages.
+
+`index.html` leest `data/energie.json`; zonder dat bestand rekent het met de voorbeeldprofielen. Bij nieuwe data worden kWp, opbrengst per kWp, stroomverbruik en tarieven één keer overgenomen in Scenario's.
 
 ## Aannames in de berekening
 

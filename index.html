@@ -48,6 +48,7 @@ p{margin:0}
 header{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
 .sub{color:var(--ink2);font-size:14px;margin-top:4px}
 .pill{display:inline-flex;align-items:center;gap:6px;background:var(--warnbg);color:var(--warnfg);border-radius:999px;padding:4px 12px 4px 6px;font-size:13px;font-weight:550}
+.pill.ok{background:var(--wash);color:var(--ink2);padding-left:12px}.pill.ok i{display:none}
 .pill i{font-style:normal;width:18px;height:18px;border-radius:50%;background:#fab219;color:#0b0b0b;display:grid;place-items:center;font-size:12px;font-weight:700}
 nav{display:flex;gap:6px;border-bottom:1px solid var(--line);padding-bottom:12px;overflow-x:auto}
 nav button{font:inherit;font-weight:550;color:var(--ink2);background:transparent;border:1px solid transparent;border-radius:999px;padding:7px 16px;cursor:pointer;white-space:nowrap}
@@ -196,6 +197,15 @@ details.card[open]>summary::after{content:'\2212'}
       <p style="margin-bottom:10px">Een webpagina als deze mag niet zelf bij die API's. Daarom haalt een klein script op jouw computer de data op en zet die als bestand klaar voor dit dashboard.</p>
       <div class="flow"><span class="b">SolarEdge</span>+<span class="b">Frank</span>→<span class="b">script</span>→<span class="b">dashboard</span></div>
     </div>
+    <form class="card" id="koppel" hidden>
+      <h2>SolarEdge koppelen</h2>
+      <p style="margin-bottom:10px">Wordt opgeslagen in <span class="mono">.env</span> op deze computer, nooit online. Laat leeg om alleen de data te vernieuwen.</p>
+      <div class="fields" style="padding:0">
+        <div class="f wide"><label for="k_key">API-key</label><input id="k_key" type="password" autocomplete="off" spellcheck="false"></div>
+        <div class="f wide"><label for="k_site">Site-ID</label><input id="k_site" inputmode="numeric" autocomplete="off"></div>
+        <div class="f wide"><button class="tbtn" type="submit">Opslaan en data ophalen</button><span class="h" id="k_msg" role="status"></span></div>
+      </div>
+    </form>
   </div>
   <p class="note">Tot die tijd rekent het dashboard met vaste voorbeeldprofielen voor een heel jaar (opbrengst per uur, verbruik, uurprijzen). Vul bij Scenario's je eigen jaartotalen in, dan sluiten de uitkomsten al aardig bij je situatie aan.</p>
 </section>
@@ -340,6 +350,24 @@ function simulate(P, C, D, detail) {
   return res;
 }
 
+/* Echte data uit data/energie.json (zie haal_data_op.py). Ontbrekende uren houden de voorbeeldwaarde. */
+function useData(d) {
+  const ok = a => Array.isArray(a) && a.length === H;
+  const used = {};
+  if (ok(d.prijs_stroom)) {
+    for (let i = 0; i < H; i++) if (d.prijs_stroom[i] != null) PROF.whole[i] = d.prijs_stroom[i];
+    used.prijzen = true;
+  }
+  // Profielen alleen als ze vrijwel compleet zijn; een half jaar meetdata geeft een scheef jaarbeeld.
+  [['opbrengst_kwh', 'pvUnit'], ['verbruik_kwh', 'baseW']].forEach(([k, p]) => {
+    if (!ok(d[k]) || d[k].filter(v => v == null).length > H * 0.1) return;
+    const a = Float64Array.from(d[k], v => Math.max(0, v || 0)), sum = a.reduce((x, y) => x + y, 0);
+    if (sum <= 0) return;
+    PROF[p] = norm(a); used[k] = sum;
+  });
+  return used;
+}
+
 function cumSeries(invest, saving, g, years) {
   const a = [-invest]; let c = -invest;
   for (let y = 1; y <= years; y++) { c += saving * Math.pow(1 + g, y - 1); a.push(c); }
@@ -377,7 +405,7 @@ var DEF={
   kwp:6,yield:900,batKwh:10,batKw:5,rt:90,elec:3200,gas:1200,shHeat:75,shDhw:20,boilerEff:90,
   eb:0.10,inkoop:0.02,btw:21,feedFee:0.02,gasPrice:1.30,gasFixed:260,growth:2,
   nAccu:1,modKwh:10,modKw:5,priceAccu:5500,extraKwp:2,pricePv:1100,arb:false,
-  hpType:'lw',hpScop:3.6,hpCov:100,hpDhw:true,hpPrice:12000,hpSub:0,hpMaint:150,hpOther:0,ketelMaint:120
+  hpType:'lw',hpScop:3.6,hpCov:100,hpDhw:true,hpPrice:12000,hpSub:0,hpMaint:150,hpOther:0,ketelMaint:120,dataStamp:''
 };
 var KEY='energiebalans-v1';
 var S=Object.assign({},DEF);
@@ -689,6 +717,44 @@ var rt=0;window.addEventListener('resize',function(){clearTimeout(rt);rt=setTime
 
 renderInputs();renderPeriodOptions();
 showTab(location.hash.slice(1));
+
+/* ---------- Echte data ---------- */
+function r4(v){return Math.round(v*10000)/10000}
+function loadData(){
+  return fetch('data/energie.json',{cache:'no-store'}).then(function(r){if(!r.ok)throw 0;return r.json()}).then(function(d){
+    var u=useData(d),se=!!(u.opbrengst_kwh||u.verbruik_kwh);
+    // Nieuwe data: jaartotalen en tarieven één keer overnemen, daarna mag je ze zelf aanpassen.
+    if(d.gemaakt!==S.dataStamp){
+      var b=1+S.btw/100;
+      if(d.kwp)S.kwp=r4(d.kwp);
+      if(u.opbrengst_kwh&&S.kwp>0)S.yield=Math.round(u.opbrengst_kwh/S.kwp);
+      if(u.verbruik_kwh)S.elec=Math.round(u.verbruik_kwh);
+      if(d.energiebelasting!=null)S.eb=r4(d.energiebelasting/b);   // Frank geeft incl. btw
+      if(d.inkoopkosten!=null)S.inkoop=r4(d.inkoopkosten/b);
+      if(d.gasprijs!=null)S.gasPrice=r4(d.gasprijs);
+      S.dataStamp=d.gemaakt;save();renderInputs();
+    }
+    var pill=$('#statusPill');pill.className='pill ok';
+    pill.lastChild.textContent=(se?'SolarEdge en Frank':'Frank-prijzen')+', '+d.van+' t/m '+d.tot;
+    var st=document.querySelectorAll('#tab-bronnen .st');
+    if(se)st[0].hidden=true;if(u.prijzen)st[1].hidden=true;
+    refresh();
+  }).catch(function(){});
+}
+loadData();
+fetch('api/status').then(function(r){if(!r.ok)throw 0;return r.json()}).then(function(s){
+  var f=$('#koppel');f.hidden=false;
+  $('#k_msg').textContent=s.gekoppeld?' Gekoppeld.':'';
+  f.addEventListener('submit',function(e){
+    e.preventDefault();var msg=$('#k_msg'),btn=f.querySelector('button');
+    btn.disabled=true;msg.textContent=' Bezig, dit duurt een paar minuten...';
+    fetch('api/koppel',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:$('#k_key').value,site:$('#k_site').value})})
+      .then(function(r){return r.json()}).then(function(j){
+        msg.textContent=j.ok?' Opgeslagen en opgehaald.':' '+j.fout;
+        if(j.ok){$('#k_key').value='';$('#k_site').value='';loadData()}
+      }).catch(function(){msg.textContent=' Geen verbinding met het script.'}).then(function(){btn.disabled=false});
+  });
+}).catch(function(){});
 })();
 </script>
 
