@@ -158,6 +158,7 @@ details.keuze[open]>summary .aan{color:var(--good)}
   <div class="bar"><label for="period">Periode</label><select id="period"></select></div>
   <div class="tiles" id="tiles"></div>
   <p class="sumline" id="sumline"></p>
+  <p class="sumline" id="cmpline"></p>
   <section class="card">
     <div class="chead"><h2 id="dayTitle">Gemiddelde dag</h2><button class="tbtn" data-tbl="day" type="button">Tabel</button></div>
     <div class="legend" id="legDay"></div>
@@ -429,7 +430,7 @@ var PRESETS={
   eigen:{label:'Eigen keuze',scop:3.6,cov:100,dhw:'wp',price:12000,maint:150}
 };
 var DEF={
-  kwp:6,yield:900,batKwh:10,batKw:5,rt:90,elec:3200,gas:1200,shHeat:75,shDhw:20,boilerEff:90,
+  kwp:6,yield:900,realPv:0,realImp:0,realExp:0,batKwh:10,batKw:5,rt:90,elec:3200,gas:1200,shHeat:75,shDhw:20,boilerEff:90,
   eb:0.10,inkoop:0.02,btw:21,feedFee:0.02,gasPrice:1.30,gasFixed:260,growth:2,
   scAccu:true,scPv:true,scHp:true,nAccu:1,modKwh:10,modKw:5,priceAccu:5500,extraKwp:2,pricePv:1100,arb:false,
   hpType:'lw',hpScop:3.6,hpCov:100,hpWw:'wp',wwVerlies:450,wpbCop:2.8,hpPrice:12000,hpSub:0,hpMaint:150,hpOther:0,ketelMaint:120,dataStamp:''
@@ -445,11 +446,15 @@ if(S.hpType==='none'){S.scHp=false;S.hpType='lw'}
 
 var GROUPS=[
  {id:'situ',title:'Jouw situatie nu',open:true,f:[
-  ['kwp','Zonnepanelen','kWp',0.1,''],['yield','Opbrengst per kWp','kWh/jr',10,''],
+  ['kwp','Zonnepanelen','kWp',0.1,''],['yield','Opbrengst per kWp','kWh/jr',10,'telt niet mee als je hieronder een gemeten jaaropbrengst invult'],
   ['batKwh','Accu','kWh',0.5,'0 als je geen accu hebt'],['batKw','Accuvermogen','kW',0.5,''],
   ['rt','Accurendement','%',1,'laden plus ontladen'],['elec','Stroomverbruik','kWh/jr',50,'zonder warmtepomp'],
   ['gas','Gasverbruik','m³/jr',25,''],['boilerEff','Rendement cv-ketel','%',1,''],
   ['shHeat','Gas voor verwarming','%',1,''],['shDhw','Gas voor warm water','%',1,'de rest is koken']
+ ]},
+ {id:'meet',title:'Eigen meetwaarden (optioneel)',open:true,f:[
+  ['realPv','Jaaropbrengst zonnepanelen','kWh/jr',50,'uit SolarEdge. Laat 0 om te rekenen met kWp maal opbrengst per kWp'],
+  ['realImp','Van het net','kWh/jr',50,'alleen ter controle'],['realExp','Terug aan het net','kWh/jr',50,'alleen ter controle']
  ]},
  {id:'tarief',title:'Tarieven (aannames)',open:false,f:[
   ['eb','Energiebelasting','€/kWh',0.005,'excl. btw'],['inkoop','Inkoopkosten leverancier','€/kWh',0.005,'excl. btw'],
@@ -492,7 +497,7 @@ function renderInputs(){
   $('#inp').innerHTML=h;
 }
 function paramsFrom(S){
-  return {kwp:S.kwp,yield:S.yield,batKwh:S.batKwh,batKw:S.batKw,rt:Math.max(.5,S.rt/100),minSoc:.1,
+  return {kwp:S.kwp,yield:(S.realPv>0&&S.kwp>0)?S.realPv/S.kwp:S.yield,batKwh:S.batKwh,batKw:S.batKw,rt:Math.max(.5,S.rt/100),minSoc:.1,
     elec:S.elec,gas:S.gas,shHeat:S.shHeat/100,shDhw:S.shDhw/100,boilerEff:S.boilerEff/100,
     eb:S.eb,inkoop:S.inkoop,btw:S.btw/100,feedFee:S.feedFee,gasPrice:S.gasPrice,gasFixed:S.gasFixed,
     ketelMaint:S.ketelMaint,curtail:true,arb:S.arb};
@@ -621,6 +626,13 @@ function renderOverview(){
   $('#tiles').innerHTML=tiles.map(function(t){return '<div class="tile"><div class="k"><span class="dot" style="background:'+t[2]+'"></span>'+t[0]+'</div><div class="v">'+kwh(t[1])+'<small>kWh</small></div></div>'}).join('');
   var self=agg.load>0?(agg.direct+agg.dis)/agg.load*100:0,eig=agg.pv>0?(agg.direct+agg.chPV)/agg.pv*100:0;
   $('#sumline').innerHTML='In <b>'+label+'</b> dekt je eigen opwekking <b>'+nf0.format(self)+'%</b> van je verbruik en gebruik je <b>'+nf0.format(eig)+'%</b> van je opbrengst zelf. Stroom netto: <b>'+eur(agg.cost)+'</b>'+(agg.cost<0?' (je houdt over)':'')+'.';
+  var cmp=[];
+  if(all){
+    if(S.realImp>0)cmp.push('van het net: gemeten <b>'+kwh(S.realImp)+'</b> kWh, model <b>'+kwh(agg.imp)+'</b> kWh');
+    if(S.realExp>0)cmp.push('terug aan het net: gemeten <b>'+kwh(S.realExp)+'</b> kWh, model <b>'+kwh(agg.exp)+'</b> kWh');
+  }
+  var yl=(S.realPv>0&&S.kwp>0)?'Opbrengst: <b>'+kwh(S.realPv)+'</b> kWh per jaar uit je eigen meting ('+kwh(S.realPv/S.kwp)+' kWh per kWp). ':'';
+  $('#cmpline').innerHTML=yl+(cmp.length?'Controle: '+cmp.join('; ')+'. Wijkt dit veel af, pas dan je stroomverbruik of accu aan.':'');
   // gemiddelde dag
   var days=0,sum={pv:new Float64Array(24),load:new Float64Array(24),acc:new Float64Array(24),net:new Float64Array(24)};
   for(var m=0;m<12;m++){if(all||m===mi){days+=MD[m];for(var h=0;h<24;h++){['pv','load','acc','net'].forEach(function(k){sum[k][h]+=r.prof[m][k][h]})}}}
