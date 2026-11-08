@@ -799,6 +799,8 @@ document.querySelectorAll('nav button').forEach(function(b){b.addEventListener('
 window.addEventListener('hashchange',function(){showTab(location.hash.slice(1))});
 var rt=0;window.addEventListener('resize',function(){clearTimeout(rt);rt=setTimeout(refresh,120)});
 
+// Waarden invullen via een link: #zet=kwp:7.7,elec:4530. Het deel na # gaat niet naar de server en komt niet in de repo.
+if(location.hash.indexOf('#zet=')===0){location.hash.slice(5).split(',').forEach(function(p){var kv=p.split(':'),v=parseFloat(kv[1]);if(typeof DEF[kv[0]]==='number'&&isFinite(v)&&v>=0)S[kv[0]]=v});save();history.replaceState(null,'',location.pathname+'#overzicht')}
 renderInputs();renderPeriodOptions();
 showTab(location.hash.slice(1));
 
