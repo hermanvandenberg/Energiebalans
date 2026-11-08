@@ -1,6 +1,5 @@
 {
- "bijgewerkt": "2026-11-08T14:26:10",
- "frank": "alleen prijzen (geen login ingevuld)",
- "solaredge": "niet gekoppeld",
- "data": "geen wachtwoord ingevuld, data niet opgeslagen"
+ "bijgewerkt": "2026-11-08T14:35:08",
+ "frank": "fout: user-error:password-invalid",
+ "solaredge": "niet gekoppeld"
 }
