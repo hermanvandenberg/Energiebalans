@@ -63,7 +63,7 @@ button:focus-visible,select:focus-visible,input:focus-visible,summary:focus-visi
 .tbtn:hover{background:var(--wash)}
 .bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 label{font-size:13px;color:var(--ink2)}
-select,input[type=number]{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--axis);border-radius:8px;padding:7px 10px;min-width:0}
+select,input[type=number],input[type=password],input:not([type]){font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--axis);border-radius:8px;padding:7px 10px;min-width:0}
 .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
 .tile{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px;min-width:0}
 .tile .k{font-size:13px;color:var(--ink2);display:flex;align-items:center;gap:7px}
@@ -138,6 +138,11 @@ details.card[open]>summary::after{content:'\2212'}
   <div><h1>Energiebalans</h1><p class="sub">SolarEdge, Frank Energie en scenario's op één plek</p></div>
   <span class="pill" id="statusPill"><i>!</i>Voorbeelddata, nog niet gekoppeld</span>
 </header>
+<form class="bar" id="ontgrendel" hidden>
+  <label for="o_ww">Je eigen data staat versleuteld klaar</label>
+  <input id="o_ww" type="password" placeholder="Wachtwoord" autocomplete="current-password">
+  <button class="tbtn" type="submit">Toon mijn data</button><span class="h" id="o_msg" role="status"></span>
+</form>
 
 <nav role="tablist" aria-label="Onderdelen">
   <button role="tab" data-tab="overzicht" aria-selected="true">Overzicht</button>
@@ -203,6 +208,7 @@ details.card[open]>summary::after{content:'\2212'}
       <div class="fields" style="padding:0">
         <div class="f wide"><label for="k_key">API-key</label><input id="k_key" type="password" autocomplete="off" spellcheck="false"></div>
         <div class="f wide"><label for="k_site">Site-ID</label><input id="k_site" inputmode="numeric" autocomplete="off"></div>
+        <div class="f wide"><label for="k_ww">Wachtwoord voor de online pagina</label><input id="k_ww" type="password" autocomplete="new-password"><span class="h">Minimaal 8 tekens. De data gaat versleuteld naar GitHub; online toon je hem met dit wachtwoord.</span></div>
         <div class="f wide"><button class="tbtn" type="submit">Opslaan en data ophalen</button><span class="h" id="k_msg" role="status"></span></div>
       </div>
     </form>
@@ -720,8 +726,40 @@ showTab(location.hash.slice(1));
 
 /* ---------- Echte data ---------- */
 function r4(v){return Math.round(v*10000)/10000}
+/* Online staat de data versleuteld in energie.enc (AES-GCM, sleutel via PBKDF2 uit je wachtwoord).
+   Na één keer ontgrendelen bewaart dit apparaat de afgeleide sleutel, nooit het wachtwoord zelf. */
+var ITER=600000,KKEY='energiebalans-sleutel',enc=null;
+function b64(s){return Uint8Array.from(atob(s),function(c){return c.charCodeAt(0)})}
+function sleutelUit(ww){
+  return crypto.subtle.importKey('raw',new TextEncoder().encode(ww),'PBKDF2',false,['deriveBits']).then(function(k){
+    return crypto.subtle.deriveBits({name:'PBKDF2',hash:'SHA-256',salt:b64(enc.salt),iterations:ITER},k,256)});
+}
+function ontsleutel(raw){
+  return crypto.subtle.importKey('raw',raw,'AES-GCM',false,['decrypt']).then(function(k){
+    return crypto.subtle.decrypt({name:'AES-GCM',iv:b64(enc.iv)},k,b64(enc.data))}).then(function(b){return JSON.parse(new TextDecoder().decode(b))});
+}
+function bewaard(){try{var o=JSON.parse(localStorage.getItem(KKEY));return o&&o.salt===enc.salt?b64(o.key):null}catch(e){return null}}
+function versleuteld(){
+  return fetch('energie.enc',{cache:'no-store'}).then(function(r){if(!r.ok)throw 0;return r.json()}).then(function(e){
+    enc=e;var k=bewaard();
+    if(k)return ontsleutel(k).catch(function(){$('#ontgrendel').hidden=false;throw 0});
+    $('#ontgrendel').hidden=false;throw 0;
+  });
+}
+$('#ontgrendel').addEventListener('submit',function(e){
+  e.preventDefault();var msg=$('#o_msg');msg.textContent=' Bezig...';
+  sleutelUit($('#o_ww').value).then(function(raw){
+    return ontsleutel(raw).then(function(d){
+      try{localStorage.setItem(KKEY,JSON.stringify({salt:enc.salt,key:btoa(String.fromCharCode.apply(null,new Uint8Array(raw)))}))}catch(x){}
+      $('#ontgrendel').hidden=true;$('#o_ww').value='';msg.textContent='';toon(d);
+    });
+  }).catch(function(){msg.textContent=' Wachtwoord klopt niet.'});
+});
 function loadData(){
-  return fetch('data/energie.json',{cache:'no-store'}).then(function(r){if(!r.ok)throw 0;return r.json()}).then(function(d){
+  return fetch('data/energie.json',{cache:'no-store'}).then(function(r){if(!r.ok)throw 0;return r.json()}).catch(versleuteld).then(toon).catch(function(){});
+}
+function toon(d){
+  return Promise.resolve(d).then(function(d){
     var u=useData(d),se=!!(u.opbrengst_kwh||u.verbruik_kwh);
     // Nieuwe data: jaartotalen en tarieven één keer overnemen, daarna mag je ze zelf aanpassen.
     if(d.gemaakt!==S.dataStamp){
@@ -739,19 +777,19 @@ function loadData(){
     var st=document.querySelectorAll('#tab-bronnen .st');
     if(se)st[0].hidden=true;if(u.prijzen)st[1].hidden=true;
     refresh();
-  }).catch(function(){});
+  });
 }
 loadData();
 fetch('api/status').then(function(r){if(!r.ok)throw 0;return r.json()}).then(function(s){
   var f=$('#koppel');f.hidden=false;
-  $('#k_msg').textContent=s.gekoppeld?' Gekoppeld.':'';
+  $('#k_msg').textContent=(s.gekoppeld?' Gekoppeld.':'')+(s.online?' Online versleuteld.':'');
   f.addEventListener('submit',function(e){
     e.preventDefault();var msg=$('#k_msg'),btn=f.querySelector('button');
     btn.disabled=true;msg.textContent=' Bezig, dit duurt een paar minuten...';
-    fetch('api/koppel',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:$('#k_key').value,site:$('#k_site').value})})
+    fetch('api/koppel',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:$('#k_key').value,site:$('#k_site').value,ww:$('#k_ww').value})})
       .then(function(r){return r.json()}).then(function(j){
         msg.textContent=j.ok?' Opgeslagen en opgehaald.':' '+j.fout;
-        if(j.ok){$('#k_key').value='';$('#k_site').value='';loadData()}
+        if(j.ok){$('#k_key').value='';$('#k_site').value='';$('#k_ww').value='';loadData()}
       }).catch(function(){msg.textContent=' Geen verbinding met het script.'}).then(function(){btn.disabled=false});
   });
 }).catch(function(){});

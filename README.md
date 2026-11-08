@@ -34,7 +34,11 @@ python haal_data_op.py --serve
 
 Open http://127.0.0.1:8000, tab Bronnen, vul API-key en site-ID in. Die komen in `.env` (staat in `.gitignore`). Daarna kan `python haal_data_op.py` ook zonder server. Het formulier werkt alleen op je eigen pc, niet op GitHub Pages.
 
-`index.html` leest `data/energie.json`; zonder dat bestand rekent het met de voorbeeldprofielen. Bij nieuwe data worden kWp, opbrengst per kWp, stroomverbruik en tarieven één keer overgenomen in Scenario's.
+### Online je eigen data zien
+
+Vul in het formulier ook een wachtwoord in (minimaal 8 tekens). Het script versleutelt de data dan met AES-GCM als `energie.enc` en pusht dat bestand. Op GitHub staat alleen onleesbare data; de online pagina vraagt één keer het wachtwoord en bewaart op dat apparaat alleen de afgeleide sleutel. Je API-key gaat nooit online. Vereist `pip install cryptography`.
+
+`index.html` leest `data/energie.json` (lokaal) of `energie.enc` (online); zonder dat bestand rekent het met de voorbeeldprofielen. Bij nieuwe data worden kWp, opbrengst per kWp, stroomverbruik en tarieven één keer overgenomen in Scenario's.
 
 ## Aannames in de berekening
 

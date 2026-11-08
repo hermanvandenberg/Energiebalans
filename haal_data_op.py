@@ -5,11 +5,16 @@
   python haal_data_op.py --test    korte zelftest
 
 API-key en site-ID staan in .env (SOLAREDGE_API_KEY, SOLAREDGE_SITE_ID). Dat bestand gaat nooit naar git.
-Alleen standaardbibliotheek, geen pip install nodig.
+Met ENERGIE_WACHTWOORD in .env wordt de data ook versleuteld als energie.enc en naar GitHub gepusht,
+zodat de online pagina hem met dat wachtwoord kan tonen. Daarvoor: pip install cryptography.
 """
+import base64
 import calendar
+import hashlib
 import json
+import os
 import re
+import subprocess
 import sys
 import urllib.parse
 import urllib.request
@@ -21,6 +26,8 @@ from pathlib import Path
 MAP = Path(__file__).resolve().parent
 ENV = MAP / ".env"
 UIT = MAP / "data" / "energie.json"
+ENC = MAP / "energie.enc"
+ITER = 600_000  # PBKDF2-SHA256, zelfde getal staat in index.html
 H = 8760
 POORT = 8000
 FRANK = "https://graphql.frankenergie.nl"
@@ -36,8 +43,29 @@ def lees_env():
     return {k.strip(): v.strip().strip('"') for k, v in regels}
 
 
-def schrijf_env(key, site):
-    ENV.write_text(f"SOLAREDGE_API_KEY={key}\nSOLAREDGE_SITE_ID={site}\n", encoding="utf-8")
+def schrijf_env(**nieuw):
+    env = {**lees_env(), **nieuw}
+    ENV.write_text("".join(f"{k}={v}\n" for k, v in env.items()), encoding="utf-8")
+
+
+def versleutel(tekst, ww, salt):
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    key = hashlib.pbkdf2_hmac("sha256", ww.encode(), salt, ITER)
+    iv = os.urandom(12)
+    b64 = lambda b: base64.b64encode(b).decode()
+    return {"salt": b64(salt), "iv": b64(iv), "data": b64(AESGCM(key).encrypt(iv, tekst.encode(), None))}
+
+
+def publiceer(tekst, ww):
+    # Zelfde salt houden, dan blijft de pagina op je apparaten ontgrendeld zolang het wachtwoord gelijk is.
+    oud = json.loads(ENC.read_text()) if ENC.exists() else {}
+    salt = base64.b64decode(oud["salt"]) if "salt" in oud else os.urandom(16)
+    ENC.write_text(json.dumps(versleutel(tekst, ww, salt)), encoding="utf-8")
+    git = lambda *a: subprocess.run(["git", *a], cwd=MAP, capture_output=True, text=True)
+    git("add", ENC.name)
+    if git("commit", "-m", "Data bijgewerkt (versleuteld)", "--", ENC.name).returncode == 0:
+        r = git("push")
+        print("Versleutelde data gepusht." if r.returncode == 0 else f"Pushen mislukt: {r.stderr.strip()}")
 
 
 def uur_index(t):
@@ -122,9 +150,12 @@ def haal_op():
         data.update(haal_solaredge(key, site, start, eind))
     else:
         print("Geen SolarEdge-gegevens in .env, alleen prijzen opgehaald.")
+    tekst = json.dumps(data, separators=(",", ":"))
     UIT.parent.mkdir(exist_ok=True)
-    UIT.write_text(json.dumps(data, separators=(",", ":")), encoding="utf-8")
+    UIT.write_text(tekst, encoding="utf-8")
     print(f"Geschreven: {UIT}")
+    if env.get("ENERGIE_WACHTWOORD"):
+        publiceer(tekst, env["ENERGIE_WACHTWOORD"])
     return data
 
 
@@ -152,7 +183,8 @@ class Handler(SimpleHTTPRequestHandler):
             return self.send_error(404)
         if pad == "/api/status":
             env = lees_env()
-            return self.antwoord(200, {"lokaal": True, "gekoppeld": bool(env.get("SOLAREDGE_API_KEY") and env.get("SOLAREDGE_SITE_ID"))})
+            return self.antwoord(200, {"lokaal": True, "gekoppeld": bool(env.get("SOLAREDGE_API_KEY") and env.get("SOLAREDGE_SITE_ID")),
+                                       "online": bool(env.get("ENERGIE_WACHTWOORD"))})
         super().do_GET()
 
     do_HEAD = do_GET
@@ -163,11 +195,16 @@ class Handler(SimpleHTTPRequestHandler):
         try:
             v = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length", 0)), 4096)) or b"{}")
             key, site = str(v.get("key", "")).strip(), str(v.get("site", "")).strip()
+            ww = str(v.get("ww", ""))
+            if ww and (len(ww) < 8 or "\n" in ww or "\r" in ww):
+                return self.antwoord(400, {"fout": "Wachtwoord: minimaal 8 tekens."})
             if key or site:
                 if not re.fullmatch(r"[A-Za-z0-9]{16,64}", key) or not re.fullmatch(r"\d{1,12}", site):
                     return self.antwoord(400, {"fout": "API-key (letters en cijfers) of site-ID (alleen cijfers) klopt niet."})
                 se(f"/site/{site}/details", key)  # eerst controleren, dan pas opslaan
-                schrijf_env(key, site)
+                schrijf_env(SOLAREDGE_API_KEY=key, SOLAREDGE_SITE_ID=site)
+            if ww:
+                schrijf_env(ENERGIE_WACHTWOORD=ww)
             haal_op()
             return self.antwoord(200, {"ok": True})
         except urllib.error.HTTPError as e:
@@ -182,6 +219,10 @@ def test():
     assert uur_index(datetime(2024, 12, 31, 23)) == H - 1  # schrikkeljaar
     assert uur_index(datetime(2024, 3, 1, 0)) == 59 * 24
     assert uur_index(datetime(2024, 2, 29, 5)) is None
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    e = versleutel('{"a":1}', "geheim123", b"0" * 16)
+    key = hashlib.pbkdf2_hmac("sha256", b"geheim123", b"0" * 16, ITER)
+    assert AESGCM(key).decrypt(base64.b64decode(e["iv"]), base64.b64decode(e["data"]), None) == b'{"a":1}'
     print("zelftest ok")
 
 
