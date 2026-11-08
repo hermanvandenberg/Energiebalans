@@ -800,7 +800,7 @@ fetch('status.json',{cache:'no-store'}).then(function(r){if(!r.ok)throw 0;return
 /* ---------- Instellingen ----------
    Alles wat je invult wordt hier versleuteld met de publieke sleutel (RSA-OAEP + AES-GCM).
    Alleen GitHub Actions heeft de bijbehorende privésleutel. Het resultaat zet je met één klik op GitHub. */
-var PUBLIEK='';  // gezet door: python haal_data_op.py --sleutel
+var PUBLIEK='MIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEA7zbwB18qQtlBqMiDQPzG8fd5Jv95pFWVzG05+vdONz+nucEuiGFtI5HwNVOjX9qUHRSy9cBMcczbs66gfQCVWs38R59fvkE3611NQS46aGLDW87JvGiqrs4nM9EgnNmBm26XinIhe7CwVhLlWShX3cwqcP29RhiXU+xL7e1o7qZfxWV5qUAqNQkYnL08FhxBezB+kUJtrECVNXDzupxkHvNJ3zJO/+9X84HHqWipt7jFFEDYJZzvguBNOs3qKZOinWgVKjtya7/ka/nehZtHTFaIYgVAOEoqrPi10ATyyBZHcPyypj9W9yhouMczWVJtZpkDoirzGDCbkbOOgbK5CBagtb2MHHtChZ/C+KDeCyrPBbpZBd2vkIFMhoj56M+DNHAzFRQ1OvoqHxm+vmPIsKUMJBfGcixfk7MWCMBo38q2h4dBwResC161uzlfBQK2nPiLZSFZXdaKAbcw6aaBiwOg/VFpp+BOHN81ocpiglkTzLHcGrs+s+cUDKhNqs9nAgMBAAE=';  // gezet door: python haal_data_op.py --sleutel
 var REPO='hermanvandenberg/Energiebalans',REDIR='https://hermanvandenberg.github.io/Energiebalans/';
 var seCode=null,seSite=null;
 function tob64(b){return btoa(String.fromCharCode.apply(null,new Uint8Array(b)))}
