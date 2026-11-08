@@ -101,6 +101,8 @@ details.card>summary{cursor:pointer;list-style:none;padding:14px 16px;font-weigh
 details.card>summary::-webkit-details-marker{display:none}
 details.card>summary::after{content:'+';font-weight:400;font-size:20px;color:var(--ink2)}
 details.card[open]>summary::after{content:'\2212'}
+details.keuze>summary .aan{margin-left:auto;margin-right:12px;font-size:12px;font-weight:500;color:var(--muted)}
+details.keuze[open]>summary .aan{color:var(--good)}
 .fields{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:0 16px 16px}
 .f{display:flex;flex-direction:column;gap:4px;min-width:0}
 .f.wide{grid-column:1/-1}
@@ -321,6 +323,7 @@ function hpFigures(P, C) {
   let elDhw = 0, elStand = 0;
   if (C.hp.dhw === 'wp') elDhw = gasDhw * kwh * eff / Math.max(1, C.hp.scop * 0.7);
   else if (C.hp.dhw === 'elek') { elDhw = gasDhw * kwh * eff / 0.95; elStand = C.hp.standby; }
+  else if (C.hp.dhw === 'wpb') { elDhw = gasDhw * kwh * eff / Math.max(1, C.hp.wpbCop); elStand = C.hp.standby; }  // warmtepompboiler
   else gasLeft += gasDhw;
   const gasFree = cov >= 0.995 && C.hp.dhw !== 'gas';
   let elCook = 0;
@@ -428,13 +431,17 @@ var PRESETS={
 var DEF={
   kwp:6,yield:900,batKwh:10,batKw:5,rt:90,elec:3200,gas:1200,shHeat:75,shDhw:20,boilerEff:90,
   eb:0.10,inkoop:0.02,btw:21,feedFee:0.02,gasPrice:1.30,gasFixed:260,growth:2,
-  nAccu:1,modKwh:10,modKw:5,priceAccu:5500,extraKwp:2,pricePv:1100,arb:false,
-  hpType:'lw',hpScop:3.6,hpCov:100,hpWw:'wp',wwVerlies:450,hpPrice:12000,hpSub:0,hpMaint:150,hpOther:0,ketelMaint:120,dataStamp:''
+  scAccu:true,scPv:true,scHp:true,nAccu:1,modKwh:10,modKw:5,priceAccu:5500,extraKwp:2,pricePv:1100,arb:false,
+  hpType:'lw',hpScop:3.6,hpCov:100,hpWw:'wp',wwVerlies:450,wpbCop:2.8,hpPrice:12000,hpSub:0,hpMaint:150,hpOther:0,ketelMaint:120,dataStamp:''
 };
 var KEY='energiebalans-v1';
 var S=Object.assign({},DEF);
 try{var raw=localStorage.getItem(KEY);if(raw){var o=JSON.parse(raw);Object.keys(DEF).forEach(function(k){if(o[k]!==undefined&&typeof o[k]===typeof DEF[k])S[k]=o[k]})}}catch(e){}
 function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+// Oude opgeslagen invoer: "0 accu's", "0 kWp" of "geen warmtepomp" wordt een ingeklapt kopje.
+if(S.nAccu===0){S.scAccu=false;S.nAccu=1}
+if(S.extraKwp===0)S.scPv=false;
+if(S.hpType==='none'){S.scHp=false;S.hpType='lw'}
 
 var GROUPS=[
  {id:'situ',title:'Jouw situatie nu',open:true,f:[
@@ -457,7 +464,7 @@ var CHOICE_FIELDS_HP=[['hpScop','Rendement (SCOP)','',0.1,'kWh warmte per kWh st
   ['hpPrice','Prijs, geplaatst','€',250,'vul je offerte in'],['hpSub','Subsidie (ISDE)','€',100,'vul zelf in'],
   ['hpMaint','Onderhoud warmtepomp','€/jr',10,''],['ketelMaint','Onderhoud ketel dat vervalt','€/jr',10,'alleen als je van het gas af gaat'],
   ['hpOther','Overige kosten','€',250,'bv. radiatoren, isolatie, boiler, kokendwaterkraan, inductie']];
-var WW={gas:'Blijft op de cv-ketel (gas)',wp:'Via de warmtepomp',elek:'Elektrische boiler + kokendwaterkraan'};
+var WW={gas:'Blijft op de cv-ketel (gas)',wp:'Via de warmtepomp',elek:'Elektrische boiler + kokendwaterkraan',wpb:'Warmtepompboiler + kokendwaterkraan'};
 
 function fieldHTML(f){
   return '<div class="f"><label for="i_'+f[0]+'">'+esc(f[1])+'</label><div class="row"><input type="number" inputmode="decimal" id="i_'+f[0]+'" data-k="'+f[0]+'" step="'+f[3]+'" min="0" value="'+S[f[0]]+'">'+(f[2]?'<span class="u">'+esc(f[2])+'</span>':'')+'</div>'+(f[4]?'<span class="h">'+esc(f[4])+'</span>':'')+'</div>';
@@ -467,17 +474,21 @@ function renderInputs(){
   GROUPS.forEach(function(g){
     h+='<details class="card"'+(g.open?' open':'')+'><summary>'+esc(g.title)+'</summary><div class="fields">'+g.f.map(fieldHTML).join('')+'</div></details>';
   });
-  h+='<details class="card" open><summary>Wat wil je veranderen</summary><div class="fields">';
-  h+='<div class="f wide"><label>Extra accu\'s</label><div class="seg" id="segAccu">'+[0,1,2].map(function(n){return '<button type="button" data-n="'+n+'" aria-pressed="'+(S.nAccu===n)+'">'+n+'</button>'}).join('')+'</div></div>';
-  h+=CHOICE_FIELDS_ACCU.map(fieldHTML).join('');
-  h+='<label class="chk wide f" style="grid-column:1/-1"><input type="checkbox" id="i_arb"'+(S.arb?' checked':'')+'><span>Accu ook op goedkope uren uit het net laden (dynamisch contract, alleen in de winter)</span></label>';
-  h+=CHOICE_FIELDS_PV.map(fieldHTML).join('');
-  h+='<div class="f wide"><label for="i_hpType">Warmtepomp</label><select id="i_hpType">'+Object.keys(PRESETS).map(function(k){return '<option value="'+k+'"'+(S.hpType===k?' selected':'')+'>'+esc(PRESETS[k].label)+'</option>'}).join('')+'</select><span class="h">Kies een type, daarna kun je alle waarden zelf aanpassen. Prijzen zijn globale voorbeeldwaarden.</span></div>';
-  h+='<div class="fields" id="hpFields" style="padding:0;grid-column:1/-1" '+(S.hpType==='none'?'hidden':'')+'>'+CHOICE_FIELDS_HP.map(fieldHTML).join('')+
+  // Elke keuze een eigen kopje: uitgeklapt = telt mee in de berekening, ingeklapt = niet.
+  function kop(k,titel,inhoud){return '<details class="card keuze" data-sc="'+k+'"'+(S[k]?' open':'')+'><summary>'+esc(titel)+'<span class="aan">'+(S[k]?'telt mee':'telt niet mee')+'</span></summary><div class="fields">'+inhoud+'</div></details>'}
+  h+='<h3 style="margin:8px 0 -4px">Wat wil je veranderen <span style="text-transform:none;letter-spacing:0;font-weight:400">— klap open wat je wilt meerekenen</span></h3>';
+  h+=kop('scAccu','Extra accu\'s',
+    '<div class="f wide"><label>Aantal</label><div class="seg" id="segAccu">'+[1,2].map(function(n){return '<button type="button" data-n="'+n+'" aria-pressed="'+(S.nAccu===n)+'">'+n+'</button>'}).join('')+'</div></div>'+
+    CHOICE_FIELDS_ACCU.map(fieldHTML).join('')+
+    '<label class="chk wide f" style="grid-column:1/-1"><input type="checkbox" id="i_arb"'+(S.arb?' checked':'')+'><span>Accu ook op goedkope uren uit het net laden (dynamisch contract, alleen in de winter)</span></label>');
+  h+=kop('scPv','Extra zonnepanelen',CHOICE_FIELDS_PV.map(fieldHTML).join(''));
+  h+=kop('scHp','Warmtepomp',
+    '<div class="f wide"><label for="i_hpType">Type</label><select id="i_hpType">'+Object.keys(PRESETS).filter(function(k){return k!=='none'}).map(function(k){return '<option value="'+k+'"'+(S.hpType===k?' selected':'')+'>'+esc(PRESETS[k].label)+'</option>'}).join('')+'</select><span class="h">Kies een type, daarna kun je alle waarden zelf aanpassen. Prijzen zijn globale voorbeeldwaarden.</span></div>'+
+    '<div class="fields" id="hpFields" style="padding:0;grid-column:1/-1">'+CHOICE_FIELDS_HP.map(fieldHTML).join('')+
      '<div class="f wide"><label for="i_hpWw">Warm water (douche en keuken)</label><select id="i_hpWw">'+Object.keys(WW).map(function(k){return '<option value="'+k+'"'+(S.hpWw===k?' selected':'')+'>'+esc(WW[k])+'</option>'}).join('')+'</select>'+
      '<span class="h">Niet op gas en de warmtepomp dekt 100%: dan ben je van het gas af en kook je op inductie.</span></div>'+
-     (S.hpWw==='elek'?fieldHTML(['wwVerlies','Stilstandsverlies boiler en kraan','kWh/jr',10,'boiler ±1 kWh/dag, kokendwaterkraan ±0,25 kWh/dag']):'')+'</div>';
-  h+='</div></details>';
+     (S.hpWw==='wpb'?fieldHTML(['wpbCop','Rendement warmtepompboiler (COP)','',0.1,'meestal 2,5 tot 3,2']):'')+
+     (S.hpWw==='elek'||S.hpWw==='wpb'?fieldHTML(['wwVerlies','Stilstandsverlies boiler en kraan','kWh/jr',10,'elektrische boiler ±1 kWh/dag, warmtepompboiler ±0,4, kokendwaterkraan ±0,25']):'')+'</div>');
   $('#inp').innerHTML=h;
 }
 function paramsFrom(S){
@@ -633,15 +644,15 @@ function renderOverview(){
 }
 
 /* ---------- Scenario's ---------- */
-function hpCfg(){return S.hpType==='none'?null:{scop:Math.max(1,S.hpScop),coverage:Math.min(100,S.hpCov)/100,dhw:S.hpWw,standby:S.wwVerlies,maint:S.hpMaint}}
+function hpCfg(){return !S.scHp?null:{scop:Math.max(1,S.hpScop),coverage:Math.min(100,S.hpCov)/100,dhw:S.hpWw,standby:S.wwVerlies,wpbCop:S.wpbCop,maint:S.hpMaint}}
 function renderScenario(){
-  var P=paramsFrom(S),D=prepare(P),n=S.nAccu;
+  var P=paramsFrom(S),D=prepare(P),n=S.scAccu?S.nAccu:0,xKwp=S.scPv?S.extraKwp:0;
   var base={kwp:P.kwp,batKwh:P.batKwh,batKw:P.batKw,hp:null};
   var cAcc=Object.assign({},base,{batKwh:P.batKwh+n*S.modKwh,batKw:P.batKw+n*S.modKw});
-  var cPv=Object.assign({},base,{kwp:P.kwp+S.extraKwp});
+  var cPv=Object.assign({},base,{kwp:P.kwp+xKwp});
   var hp=hpCfg(),cHp=Object.assign({},base,{hp:hp});
   var cAll={kwp:cPv.kwp,batKwh:cAcc.batKwh,batKw:cAcc.batKw,hp:hp};
-  var inv={acc:n*S.priceAccu,pv:S.extraKwp*S.pricePv,hp:hp?Math.max(0,S.hpPrice-S.hpSub)+S.hpOther:0};
+  var inv={acc:n*S.priceAccu,pv:xKwp*S.pricePv,hp:hp?Math.max(0,S.hpPrice-S.hpSub)+S.hpOther:0};
   var rBase=simulate(P,base,D),rAll=simulate(P,cAll,D);
   var rows=[];
   function row(name,active,c,invest){
@@ -650,15 +661,40 @@ function renderScenario(){
     rows.push({name:name,invest:invest,saving:sv,pay:paybackFrom(cs)});
   }
   row(n===1?'Extra accu':'Extra accu’s',n>0,cAcc,inv.acc);
-  row('Extra panelen',S.extraKwp>0,cPv,inv.pv);
+  row('Extra panelen',xKwp>0,cPv,inv.pv);
   row('Warmtepomp',!!hp,cHp,inv.hp);
   var invAll=inv.acc+inv.pv+inv.hp,savAll=rBase.total-rAll.total;
   var cum=cumSeries(invAll,savAll,S.growth/100,20),payAll=paybackFrom(cum);
   var cum15=cum[15];
-  var any=n>0||S.extraKwp>0||!!hp;
+  var any=n>0||xKwp>0||!!hp;
   function payTxt(p,sv){return p===null?(sv<=0?'geen':'> 30 jaar'):(p===0?'direct':nf1.format(p)+' jaar')}
+  // Alleen de warmtepomp tegenover nu: waar de besparing vandaan komt, en de warmwateropties naast elkaar.
+  function hpKaart(){
+    var r=simulate(P,cHp,D),f=r.hp,sv=rBase.total-r.total;
+    var extraKwh=f.elHeat+f.elDhw+f.elStand+f.elCook,extraEur=r.elecCost-rBase.elecCost;
+    function L(a,b,c){return '<tr><td>'+a+'</td><td>'+b+'</td><td>'+c+'</td></tr>'}
+    var t='<section class="card"><h3>Warmtepomp doorgerekend</h3><div class="tblwrap"><table><thead><tr><th></th><th>Hoeveel</th><th>Per jaar</th></tr></thead><tbody>'+
+      L('Gas nu, incl. vastrecht',kwh(rBase.gasM3)+' m³',eur(rBase.gasCost))+
+      L('Gas daarna'+(f.gasFree?' (aansluiting vervalt)':''),kwh(r.gasM3)+' m³',eur(r.gasCost))+
+      L('Extra stroom: verwarming',kwh(f.elHeat)+' kWh','')+
+      (f.elDhw?L('Extra stroom: warm water',kwh(f.elDhw)+' kWh',''):'')+
+      (f.elStand?L('Extra stroom: stilstandsverlies',kwh(f.elStand)+' kWh',''):'')+
+      (f.elCook?L('Extra stroom: koken op inductie',kwh(f.elCook)+' kWh',''):'')+
+      L('Extra stroomkosten',kwh(extraKwh)+' kWh à gem. '+nf2.format(extraKwh?extraEur/extraKwh:0)+' €/kWh',eur(extraEur))+
+      L('Onderhoud (warmtepomp min ketel)','',eur(r.other))+
+      '<tr class="tot"><td>Besparing</td><td></td><td>'+eur(sv)+'</td></tr></tbody></table></div>'+
+      '<p class="note" style="margin-top:8px">De gemiddelde stroomprijs komt uit de uur-voor-uur-berekening: wat je panelen en accu op dat uur leveren telt mee, de rest koop je in tegen de uurprijs.</p>';
+    var opts=Object.keys(WW).map(function(w){
+      var rr=simulate(P,Object.assign({},cHp,{hp:Object.assign({},hp,{dhw:w})}),D),s=rBase.total-rr.total;
+      return {w:w,s:s,kwh:rr.hp.elDhw+rr.hp.elStand,gas:rr.gasM3,pay:paybackFrom(cumSeries(inv.hp,s,S.growth/100,30))};
+    });
+    t+='<h3 style="margin-top:16px">Warm water: de opties naast elkaar</h3><div class="tblwrap"><table><thead><tr><th>Warm water</th><th>Stroom</th><th>Gas over</th><th>Besparing</th><th>Terugverdiend</th></tr></thead><tbody>'+
+      opts.map(function(o){var b=o.w===S.hpWw;return '<tr'+(b?' class="tot"':'')+'><td>'+esc(WW[o.w])+(b?' (gekozen)':'')+'</td><td>'+kwh(o.kwh)+' kWh</td><td>'+kwh(o.gas)+' m³</td><td>'+eur(o.s)+'</td><td>'+payTxt(o.pay,o.s)+'</td></tr>'}).join('')+
+      '</tbody></table></div><p class="note" style="margin-top:8px">Elke regel rekent met dezelfde investering. Kost een optie meer of minder (boiler, kraan, warmtepompboiler), tel dat verschil zelf mee bij Overige kosten.</p></section>';
+    return t;
+  }
   var h='';
-  if(!any){h+='<section class="card"><h2>Kies wat je wilt veranderen</h2><p class="note" style="margin-top:6px">Zet een extra accu, extra panelen of een warmtepomp aan bij “Wat wil je veranderen”. Het resultaat verschijnt hier.</p></section>'}
+  if(!any){h+='<section class="card"><h2>Kies wat je wilt veranderen</h2><p class="note" style="margin-top:6px">Klap bij “Wat wil je veranderen” een extra accu, extra panelen of een warmtepomp open. Het resultaat verschijnt hier.</p></section>'}
   else{
     h+='<section class="card"><div class="hero">'+
       '<div><div class="k">Besparing per jaar</div><div class="v '+(savAll>=0?'pos':'neg')+'">'+eur(savAll)+'</div><div class="s">eerste jaar</div></div>'+
@@ -670,6 +706,7 @@ function renderScenario(){
       rows.map(function(r){return r.off?'<tr><td>'+esc(r.name)+'</td><td colspan="3" style="color:var(--muted)">niet gekozen</td></tr>':'<tr><td>'+esc(r.name)+'</td><td>'+eur(r.invest)+'</td><td>'+eur(r.saving)+'</td><td>'+payTxt(r.pay,r.saving)+'</td></tr>'}).join('')+
       '<tr class="tot"><td>Alles samen</td><td>'+eur(invAll)+'</td><td>'+eur(savAll)+'</td><td>'+payTxt(payAll,savAll)+'</td></tr></tbody></table></div>'+
       '<p class="note" style="margin-top:8px">Samen is niet de som van de losse effecten: een warmtepomp vergroot je verbruik, waardoor extra panelen en een accu meer opleveren, en andersom.</p></section>';
+    if(hp)h+=hpKaart();
     h+='<section class="card"><div class="chead"><h2>Cumulatief resultaat, 20 jaar</h2></div><div class="chart" id="chCum"></div></section>';
     h+='<section class="card"><h3>Huidig tegenover scenario, per jaar</h3><div class="tblwrap"><table><thead><tr><th></th><th>Huidig</th><th>Scenario</th></tr></thead><tbody>'+
       '<tr><td>Zonne-opbrengst</td><td>'+kwh(rBase.t.pv)+' kWh</td><td>'+kwh(rAll.t.pv)+' kWh</td></tr>'+
@@ -714,11 +751,19 @@ inp.addEventListener('change',function(e){
   if(t.id==='i_hpWw'||t.id==='i_hpType'){
     if(t.id==='i_hpWw')S.hpWw=t.value;
     else{S.hpType=t.value;var p=PRESETS[t.value];
-      if(p&&p.scop!==undefined){S.hpScop=p.scop;S.hpCov=p.cov;S.hpWw=p.dhw;S.hpPrice=p.price;S.hpMaint=p.maint;S.hpSub=0}}
+      if(p&&p.scop!==undefined){S.hpScop=p.scop;S.hpCov=p.cov;
+        // jouw warmwaterkeuze houden; alleen bij een pomp die niet alles dekt valt warm water terug op gas
+        S.hpWw=p.dhw==='gas'?'gas':(S.hpWw==='gas'?p.dhw:S.hpWw);S.hpPrice=p.price;S.hpMaint=p.maint;S.hpSub=0}}
     save();var open=Array.prototype.map.call(inp.querySelectorAll('details'),function(d){return d.open});
     renderInputs();Array.prototype.forEach.call(inp.querySelectorAll('details'),function(d,i){d.open=open[i]});refresh();
   }
 });
+// 'toggle' borrelt niet op, dus luisteren in de capture-fase.
+inp.addEventListener('toggle',function(e){
+  var d=e.target;if(!d.dataset||!d.dataset.sc||S[d.dataset.sc]===d.open)return;
+  S[d.dataset.sc]=d.open;save();
+  d.querySelector('.aan').textContent=d.open?'telt mee':'telt niet mee';refresh();
+},true);
 inp.addEventListener('click',function(e){
   var b=e.target.closest('#segAccu button');if(!b)return;
   S.nAccu=+b.dataset.n;save();
