@@ -1,0 +1,696 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Dashboard voor zonnepanelen, accu, stroom en gas met scenario-tool voor extra accu's, panelen en een warmtepomp.">
+<style>
+:root{color-scheme:light}
+html{-webkit-text-size-adjust:100%}
+body{margin:0}
+img{max-width:100%}
+[hidden]{display:none!important}
+</style>
+<title>Energiebalans</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Schibsted+Grotesk:wght@400;500;600;700&display=swap">
+<style>
+/* Opzet: rustig, één kolom op telefoon, op breed scherm invoer links en uitkomst rechts. Kleur hoort bij de grootheid: zon blauw, verbruik oranje, accu aqua, net geel. */
+:root{
+  --bg:#f9f9f7; --surface:#fcfcfb; --ink:#0b0b0b; --ink2:#52514e; --muted:#898781;
+  --grid:#e1e0d9; --axis:#c3c2b7; --line:rgba(11,11,11,.10); --wash:rgba(11,11,11,.05);
+  --zon:#2a78d6; --verb:#eb6834; --accu:#1baf7a; --net:#eda100;
+  --good:#006300; --bad:#b32d2d; --warnbg:#fff3d0; --warnfg:#5c4200;
+  --font:'Schibsted Grotesk',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0d0d0d; --surface:#1a1a19; --ink:#f0efec; --ink2:#c3c2b7; --muted:#898781;
+    --grid:#2c2c2a; --axis:#383835; --line:rgba(255,255,255,.10); --wash:rgba(255,255,255,.06);
+    --zon:#3987e5; --verb:#d95926; --accu:#199e70; --net:#c98500;
+    --good:#0ca30c; --bad:#e66767; --warnbg:#3a2f10; --warnfg:#f3d98a; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0d0d0d; --surface:#1a1a19; --ink:#f0efec; --ink2:#c3c2b7; --muted:#898781;
+  --grid:#2c2c2a; --axis:#383835; --line:rgba(255,255,255,.10); --wash:rgba(255,255,255,.06);
+  --zon:#3987e5; --verb:#d95926; --accu:#199e70; --net:#c98500;
+  --good:#0ca30c; --bad:#e66767; --warnbg:#3a2f10; --warnfg:#f3d98a; color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--font);font-size:15px;line-height:1.45;
+  padding-block:20px 48px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.wrap{max-width:1120px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+h1{font-size:26px;line-height:1.1;margin:0;font-weight:700;letter-spacing:-.01em}
+h2{font-size:16px;margin:0;font-weight:650}
+h3{font-size:13px;margin:0 0 8px;font-weight:600;color:var(--ink2);letter-spacing:.04em;text-transform:uppercase}
+p{margin:0}
+header{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+.sub{color:var(--ink2);font-size:14px;margin-top:4px}
+.pill{display:inline-flex;align-items:center;gap:6px;background:var(--warnbg);color:var(--warnfg);border-radius:999px;padding:4px 12px 4px 6px;font-size:13px;font-weight:550}
+.pill i{font-style:normal;width:18px;height:18px;border-radius:50%;background:#fab219;color:#0b0b0b;display:grid;place-items:center;font-size:12px;font-weight:700}
+nav{display:flex;gap:6px;border-bottom:1px solid var(--line);padding-bottom:12px;overflow-x:auto}
+nav button{font:inherit;font-weight:550;color:var(--ink2);background:transparent;border:1px solid transparent;border-radius:999px;padding:7px 16px;cursor:pointer;white-space:nowrap}
+nav button:hover{background:var(--wash)}
+nav button[aria-selected="true"]{background:var(--ink);color:var(--bg)}
+button:focus-visible,select:focus-visible,input:focus-visible,summary:focus-visible{outline:2px solid var(--zon);outline-offset:2px}
+.panel[hidden]{display:none}
+.panel{display:flex;flex-direction:column;gap:16px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px;min-width:0}
+.chead{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px}
+.tbtn{font:inherit;font-size:13px;color:var(--ink2);background:transparent;border:1px solid var(--line);border-radius:8px;padding:3px 10px;cursor:pointer}
+.tbtn:hover{background:var(--wash)}
+.bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+label{font-size:13px;color:var(--ink2)}
+select,input[type=number]{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--axis);border-radius:8px;padding:7px 10px;min-width:0}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.tile{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px;min-width:0}
+.tile .k{font-size:13px;color:var(--ink2);display:flex;align-items:center;gap:7px}
+.dot{width:9px;height:9px;border-radius:50%;flex:none}
+.tile .v{font-size:26px;font-weight:650;line-height:1.15;margin-top:2px;font-variant-numeric:tabular-nums}
+.tile .v small{font-size:13px;font-weight:500;color:var(--ink2);margin-left:3px}
+.sumline{color:var(--ink2);font-size:14px}
+.sumline b{color:var(--ink);font-weight:600}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:13px;color:var(--ink2);margin-bottom:6px}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.chart{position:relative;min-width:0}
+.chart svg{display:block;width:100%;overflow:visible}
+.tt{position:absolute;pointer-events:none;background:var(--surface);border:1px solid var(--axis);border-radius:8px;padding:8px 10px;font-size:13px;box-shadow:0 4px 16px rgba(0,0,0,.12);z-index:3;white-space:nowrap}
+.tt b{display:block;margin-bottom:3px;font-weight:600}
+.tt div{display:flex;align-items:center;gap:6px;font-variant-numeric:tabular-nums}
+.tt[hidden]{display:none}
+.tblwrap{overflow-x:auto;max-height:300px;overflow-y:auto}
+table{border-collapse:collapse;width:100%;font-size:14px;font-variant-numeric:tabular-nums}
+th,td{text-align:right;padding:7px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+th:first-child,td:first-child{text-align:left;white-space:normal}
+th{font-weight:600;color:var(--ink2);font-size:13px}
+tr.tot td{font-weight:650;border-bottom:0}
+.scen{display:grid;grid-template-columns:1fr;gap:16px;align-items:start}
+.res{display:flex;flex-direction:column;gap:16px;min-width:0}
+.inp{display:flex;flex-direction:column;gap:12px;min-width:0}
+@media (min-width:900px){
+  .scen{grid-template-columns:minmax(320px,400px) 1fr}
+  .inp{grid-column:1;grid-row:1}.res{grid-column:2;grid-row:1}
+}
+@media (max-width:899px){ .res{order:-1} }
+details.card{padding:0}
+details.card>summary{cursor:pointer;list-style:none;padding:14px 16px;font-weight:650;font-size:16px;display:flex;justify-content:space-between;align-items:center}
+details.card>summary::-webkit-details-marker{display:none}
+details.card>summary::after{content:'+';font-weight:400;font-size:20px;color:var(--ink2)}
+details.card[open]>summary::after{content:'\2212'}
+.fields{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:0 16px 16px}
+.f{display:flex;flex-direction:column;gap:4px;min-width:0}
+.f.wide{grid-column:1/-1}
+.f .row{display:flex;align-items:center;gap:6px}
+.f input[type=number]{width:100%}
+.f .u{font-family:var(--mono);font-size:12px;color:var(--muted);white-space:nowrap}
+.f .h{font-size:12px;color:var(--muted)}
+.seg{display:inline-flex;border:1px solid var(--axis);border-radius:8px;overflow:hidden}
+.seg button{font:inherit;background:var(--bg);color:var(--ink);border:0;border-right:1px solid var(--axis);padding:7px 16px;cursor:pointer}
+.seg button:last-child{border-right:0}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
+.chk{display:flex;gap:8px;align-items:flex-start;font-size:14px;color:var(--ink)}
+.chk input{margin-top:3px}
+.hero{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:14px}
+.hero .k{font-size:13px;color:var(--ink2)}
+.hero .v{font-size:30px;font-weight:700;line-height:1.1;font-variant-numeric:tabular-nums}
+.hero .v.pos{color:var(--good)}.hero .v.neg{color:var(--bad)}
+.hero .s{font-size:13px;color:var(--muted)}
+.note{font-size:13px;color:var(--ink2)}
+.note ul{margin:6px 0 0;padding-left:18px}
+.src{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+.src .card h2{margin-bottom:6px}
+.src .card p,.src .card li{font-size:14px;color:var(--ink2)}
+.src ul{margin:8px 0 0;padding-left:18px}
+.st{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:550;color:var(--warnfg);background:var(--warnbg);border-radius:999px;padding:2px 10px;margin-bottom:8px}
+.mono{font-family:var(--mono);font-size:13px}
+.flow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:14px}
+.flow span.b{background:var(--wash);border-radius:8px;padding:6px 10px}
+@media (prefers-reduced-motion:no-preference){ nav button{transition:background .15s} }
+</style>
+</head>
+<body>
+
+
+<div class="wrap">
+<header>
+  <div><h1>Energiebalans</h1><p class="sub">SolarEdge, Frank Energie en scenario's op één plek</p></div>
+  <span class="pill" id="statusPill"><i>!</i>Voorbeelddata, nog niet gekoppeld</span>
+</header>
+
+<nav role="tablist" aria-label="Onderdelen">
+  <button role="tab" data-tab="overzicht" aria-selected="true">Overzicht</button>
+  <button role="tab" data-tab="scenario" aria-selected="false">Scenario's</button>
+  <button role="tab" data-tab="bronnen" aria-selected="false">Bronnen</button>
+</nav>
+
+<section class="panel" id="tab-overzicht">
+  <div class="bar"><label for="period">Periode</label><select id="period"></select></div>
+  <div class="tiles" id="tiles"></div>
+  <p class="sumline" id="sumline"></p>
+  <section class="card">
+    <div class="chead"><h2 id="dayTitle">Gemiddelde dag</h2><button class="tbtn" data-tbl="day" type="button">Tabel</button></div>
+    <div class="legend" id="legDay"></div>
+    <div class="chart" id="chDay"></div>
+    <div class="tblwrap" id="tbDay" hidden></div>
+  </section>
+  <section class="card">
+    <div class="chead"><h2>Waar komt je stroom vandaan, per maand</h2><button class="tbtn" data-tbl="mon" type="button">Tabel</button></div>
+    <div class="legend" id="legMon"></div>
+    <div class="chart" id="chMon"></div>
+    <div class="tblwrap" id="tbMon" hidden></div>
+  </section>
+  <p class="note">Dit zijn voorbeeldprofielen op basis van je invoer bij Scenario's (aantal kWp, accu, verbruik). Zodra SolarEdge en Frank Energie gekoppeld zijn, komen hier je echte meetwaarden voor in de plaats.</p>
+</section>
+
+<section class="panel" id="tab-scenario" hidden>
+  <div class="scen">
+    <div class="res" id="res"></div>
+    <div class="inp" id="inp"></div>
+  </div>
+</section>
+
+<section class="panel" id="tab-bronnen" hidden>
+  <div class="src">
+    <div class="card">
+      <span class="st"><i style="font-style:normal">!</i>Niet gekoppeld</span>
+      <h2>SolarEdge</h2>
+      <p>Zonnepanelen en accu via de SolarEdge Monitoring API.</p>
+      <ul>
+        <li>Nodig: API-key en site-ID uit het monitoringportaal</li>
+        <li>Levert: opbrengst, verbruik, netinkoop, teruglevering, laden en ontladen van de accu, in kwartieren</li>
+      </ul>
+    </div>
+    <div class="card">
+      <span class="st"><i style="font-style:normal">!</i>Niet gekoppeld</span>
+      <h2>Frank Energie</h2>
+      <p>Uurprijzen en je eigen verbruik voor stroom en gas.</p>
+      <ul>
+        <li>Prijzen zijn openbaar beschikbaar</li>
+        <li>Voor je eigen verbruik is inloggen met je Frank-account nodig</li>
+        <li>De API is niet officieel gedocumenteerd en kan wijzigen</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h2>Hoe de koppeling straks loopt</h2>
+      <p style="margin-bottom:10px">Een webpagina als deze mag niet zelf bij die API's. Daarom haalt een klein script op jouw computer de data op en zet die als bestand klaar voor dit dashboard.</p>
+      <div class="flow"><span class="b">SolarEdge</span>+<span class="b">Frank</span>→<span class="b">script</span>→<span class="b">dashboard</span></div>
+    </div>
+  </div>
+  <p class="note">Tot die tijd rekent het dashboard met vaste voorbeeldprofielen voor een heel jaar (opbrengst per uur, verbruik, uurprijzen). Vul bij Scenario's je eigen jaartotalen in, dan sluiten de uitkomsten al aardig bij je situatie aan.</p>
+</section>
+</div>
+
+<script>
+const MD = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+const MN = ['jan', 'feb', 'mrt', 'apr', 'mei', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'dec'];
+const MNL = ['januari', 'februari', 'maart', 'april', 'mei', 'juni', 'juli', 'augustus', 'september', 'oktober', 'november', 'december'];
+const H = 8760;
+
+function rng(seed) {
+  let s = seed >>> 0;
+  return function () { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 4294967296; };
+}
+function norm(a) {
+  let t = 0; for (let i = 0; i < a.length; i++) t += a[i];
+  const o = new Float64Array(a.length); for (let i = 0; i < a.length; i++) o[i] = a[i] / t; return o;
+}
+
+/* Vaste voorbeeldprofielen voor een jaar (8760 uur). Later te vervangen door echte SolarEdge- en Frank-data. */
+const PROF = (function () {
+  const r = rng(20261108);
+  const pvShare = norm([3, 5, 8.5, 11.5, 13.5, 14, 14, 11.5, 9, 6, 3, 1.5]);
+  const dayLen = [8.2, 9.9, 11.9, 14.1, 16, 16.8, 16.4, 14.9, 12.9, 10.8, 8.8, 7.8];
+  const baseM = [0.105, 0.1, 0.088, 0.078, 0.068, 0.063, 0.068, 0.073, 0.083, 0.093, 0.103, 0.112];
+  const hourPrice = [0.70, 0.66, 0.64, 0.63, 0.66, 0.78, 1.0, 1.2, 1.15, 0.98, 0.88, 0.82, 0.78, 0.76, 0.82, 0.95, 1.18, 1.45, 1.55, 1.4, 1.2, 1.0, 0.85, 0.75];
+  const dip = [0.05, 0.08, 0.18, 0.30, 0.38, 0.42, 0.42, 0.38, 0.28, 0.15, 0.07, 0.04];
+  const baseHour = [.025, .02, .018, .018, .02, .03, .05, .065, .055, .045, .04, .04, .045, .04, .04, .045, .055, .075, .09, .085, .07, .055, .04, .03];
+  const heatHour = norm([.045, .045, .045, .045, .045, .05, .055, .055, .05, .04, .035, .035, .035, .035, .035, .04, .045, .05, .05, .05, .045, .045, .045, .045]);
+  const dhwHour = norm([.01, .005, .005, .005, .01, .03, .09, .11, .08, .04, .03, .03, .04, .03, .03, .03, .04, .07, .09, .08, .07, .05, .03, .02]);
+  const baseMon = [1.15, 1.1, 1.05, 1, .95, .9, .9, .9, .95, 1, 1.1, 1.15];
+  const heatMon = [.19, .16, .13, .08, .04, .01, 0, 0, .02, .07, .13, .17];
+  const dhwMon = [1.1, 1.1, 1.05, 1, .95, .9, .9, .9, .95, 1, 1.05, 1.1];
+
+  const month = new Uint8Array(H), hour = new Uint8Array(H);
+  const pvRaw = new Float64Array(H), whole = new Float64Array(H);
+  const baseR = new Float64Array(H), heatW = new Float64Array(H), dhwR = new Float64Array(H);
+  const flat = new Float64Array(H).fill(1 / H);
+  const monSum = new Float64Array(12);
+  let h = 0;
+  for (let m = 0; m < 12; m++) {
+    const half = dayLen[m] / 2, c = (m >= 3 && m <= 8) ? 13.7 : 12.7;
+    for (let d = 0; d < MD[m]; d++) {
+      const w = 0.15 + 0.95 * Math.pow(r(), 0.7);
+      const wc = Math.min(w, 1);
+      const dayF = (0.6 + 0.8 * r()) * (1.15 - 0.3 * wc);
+      for (let hh = 0; hh < 24; hh++) {
+        month[h] = m; hour[h] = hh;
+        const x = (hh + 0.5 - c) / half;
+        const s = Math.abs(x) < 1 ? Math.pow(Math.cos(Math.PI / 2 * x), 1.4) : 0;
+        pvRaw[h] = s * w; monSum[m] += pvRaw[h];
+        const wp = baseM[m] * dayF * hourPrice[hh] * (1 - dip[m] * s * wc) - 0.03 * dip[m] * s * wc;
+        whole[h] = Math.max(-0.08, wp);
+        baseR[h] = baseMon[m] * baseHour[hh];
+        heatW[h] = heatMon[m] / MD[m] * heatHour[hh];
+        dhwR[h] = dhwMon[m] * dhwHour[hh];
+        h++;
+      }
+    }
+  }
+  const pvUnit = new Float64Array(H);
+  for (let i = 0; i < H; i++) pvUnit[i] = pvRaw[i] / monSum[month[i]] * pvShare[month[i]];
+  return { month, hour, whole, pvUnit, baseW: norm(baseR), heatW, dhwW: norm(dhwR), flat };
+})();
+
+/* Uurprijzen en slim-laden-vlag voor de gekozen tarieven. */
+function prepare(P) {
+  const buy = new Float64Array(H), feed = new Float64Array(H), cheap = new Uint8Array(H);
+  for (let h = 0; h < H; h++) {
+    buy[h] = (PROF.whole[h] + P.inkoop + P.eb) * (1 + P.btw);
+    feed[h] = PROF.whole[h] - P.feedFee;
+  }
+  if (P.arb) {
+    for (let d = 0; d < 365; d++) {
+      const a = []; for (let k = 0; k < 24; k++) a.push(buy[d * 24 + k]);
+      const s = a.slice().sort((x, y) => x - y);
+      const q25 = s[5], q75 = s[17];
+      if (q75 * P.rt - q25 > 0.03) for (let k = 0; k < 24; k++) if (a[k] <= q25) cheap[d * 24 + k] = 1;
+    }
+  }
+  return { buy, feed, cheap };
+}
+
+function hpFigures(P, C) {
+  const gasHeat = P.gas * P.shHeat, gasDhw = P.gas * P.shDhw, gasCook = Math.max(0, P.gas - gasHeat - gasDhw);
+  if (!C.hp) return { elHeat: 0, elDhw: 0, elCook: 0, gasLeft: P.gas, gasFree: false, maint: 0 };
+  const kwh = 9.77, eff = P.boilerEff, cov = Math.min(1, Math.max(0, C.hp.coverage));
+  const elHeat = gasHeat * kwh * eff * cov / C.hp.scop;
+  let gasLeft = gasHeat * (1 - cov);
+  let elDhw = 0;
+  if (C.hp.dhw) elDhw = gasDhw * kwh * eff / Math.max(1, C.hp.scop * 0.7); else gasLeft += gasDhw;
+  const gasFree = cov >= 0.995 && !!C.hp.dhw;
+  let elCook = 0;
+  if (gasFree) elCook = gasCook * kwh * 0.45 / 0.88; else gasLeft += gasCook;
+  return { elHeat, elDhw, elCook, gasLeft, gasFree, maint: C.hp.maint - (gasFree ? P.ketelMaint : 0) };
+}
+
+function simulate(P, C, D, detail) {
+  const hp = hpFigures(P, C);
+  const pvAnn = C.kwp * P.yield;
+  const cap = C.batKwh, pmax = C.batKw, minS = cap * P.minSoc, eta = Math.sqrt(P.rt);
+  let soc = minS;
+  const t = { pv: 0, load: 0, direct: 0, chPV: 0, chGrid: 0, dis: 0, imp: 0, exp: 0, curt: 0, impCost: 0, expRev: 0 };
+  let mon = null, prof = null;
+  if (detail) {
+    mon = []; prof = [];
+    for (let m = 0; m < 12; m++) {
+      mon.push({ pv: 0, load: 0, direct: 0, chPV: 0, chGrid: 0, dis: 0, imp: 0, exp: 0, cost: 0 });
+      prof.push({ pv: new Float64Array(24), load: new Float64Array(24), acc: new Float64Array(24), net: new Float64Array(24) });
+    }
+  }
+  for (let h = 0; h < H; h++) {
+    const pv = PROF.pvUnit[h] * pvAnn;
+    const L = PROF.baseW[h] * P.elec + PROF.heatW[h] * hp.elHeat + PROF.dhwW[h] * hp.elDhw + PROF.flat[h] * hp.elCook;
+    const direct = Math.min(L, pv);
+    let sur = pv - direct, def = L - direct;
+    let chPV = 0, chGrid = 0, dis = 0;
+    if (cap > 0 && pmax > 0) {
+      if (sur > 0) { chPV = Math.min(sur, pmax, (cap - soc) / eta); soc += chPV * eta; sur -= chPV; }
+      if (D.cheap[h] && pv === 0 && (PROF.month[h] <= 2 || PROF.month[h] >= 9)) {
+        chGrid = Math.max(0, Math.min(pmax - chPV, (cap - soc) / eta)); soc += chGrid * eta;
+      } else if (def > 0 && soc > minS && !(D.cheap[h] && pv === 0)) {
+        dis = Math.min(def, pmax, (soc - minS) * eta); soc -= dis / eta; def -= dis;
+      }
+    }
+    const imp = def + chGrid;
+    let exp = 0, curt = 0;
+    if (sur > 0) { if (D.feed[h] >= 0 || !P.curtail) exp = sur; else curt = sur; }
+    const cost = imp * D.buy[h] - exp * D.feed[h];
+    t.pv += pv; t.load += L; t.direct += direct; t.chPV += chPV; t.chGrid += chGrid; t.dis += dis;
+    t.imp += imp; t.exp += exp; t.curt += curt; t.impCost += imp * D.buy[h]; t.expRev += exp * D.feed[h];
+    if (detail) {
+      const m = PROF.month[h], hh = PROF.hour[h], o = mon[m], p = prof[m];
+      o.pv += pv; o.load += L; o.direct += direct; o.chPV += chPV; o.chGrid += chGrid; o.dis += dis; o.imp += imp; o.exp += exp; o.cost += cost;
+      p.pv[hh] += pv; p.load[hh] += L; p.acc[hh] += chPV + chGrid - dis; p.net[hh] += imp - exp;
+    }
+  }
+  const gasCost = hp.gasLeft * P.gasPrice + (hp.gasLeft > 0.5 ? P.gasFixed : 0);
+  const elecCost = t.impCost - t.expRev;
+  const res = { t, hp, elecCost, gasCost, other: hp.maint, gasM3: hp.gasLeft, total: elecCost + gasCost + hp.maint, mon, prof };
+  return res;
+}
+
+function cumSeries(invest, saving, g, years) {
+  const a = [-invest]; let c = -invest;
+  for (let y = 1; y <= years; y++) { c += saving * Math.pow(1 + g, y - 1); a.push(c); }
+  return a;
+}
+function paybackFrom(a) {
+  if (a[0] >= 0) return 0;
+  for (let y = 1; y < a.length; y++) if (a[y] >= 0 && a[y - 1] < 0) return y - 1 + (-a[y - 1]) / (a[y] - a[y - 1]);
+  return null;
+}
+
+</script>
+<script>
+(function(){
+'use strict';
+var $=function(s,r){return (r||document).querySelector(s)};
+var nf0=new Intl.NumberFormat('nl-NL',{maximumFractionDigits:0});
+var nf1=new Intl.NumberFormat('nl-NL',{maximumFractionDigits:1,minimumFractionDigits:1});
+var nf2=new Intl.NumberFormat('nl-NL',{maximumFractionDigits:2,minimumFractionDigits:2});
+var eurF=new Intl.NumberFormat('nl-NL',{style:'currency',currency:'EUR',maximumFractionDigits:0});
+function eur(n){return eurF.format(Math.round(n)).replace(/\s/g,' ')}
+function kwh(n){return nf0.format(n)}
+function esc(s){return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+
+/* ---------- Invoer ---------- */
+var PRESETS={
+  none:{label:'Geen warmtepomp'},
+  hyb:{label:'Hybride (naast je cv-ketel)',scop:3.4,cov:70,dhw:false,price:5500,maint:100},
+  lw:{label:'Lucht-water (alles elektrisch)',scop:3.6,cov:100,dhw:true,price:12000,maint:150},
+  bw:{label:'Bodem-water (alles elektrisch)',scop:4.5,cov:100,dhw:true,price:20000,maint:200},
+  ll:{label:'Lucht-lucht (airco\'s)',scop:4.0,cov:50,dhw:false,price:4500,maint:80},
+  eigen:{label:'Eigen keuze',scop:3.6,cov:100,dhw:true,price:12000,maint:150}
+};
+var DEF={
+  kwp:6,yield:900,batKwh:10,batKw:5,rt:90,elec:3200,gas:1200,shHeat:75,shDhw:20,boilerEff:90,
+  eb:0.10,inkoop:0.02,btw:21,feedFee:0.02,gasPrice:1.30,gasFixed:260,growth:2,
+  nAccu:1,modKwh:10,modKw:5,priceAccu:5500,extraKwp:2,pricePv:1100,arb:false,
+  hpType:'lw',hpScop:3.6,hpCov:100,hpDhw:true,hpPrice:12000,hpSub:0,hpMaint:150,hpOther:0,ketelMaint:120
+};
+var KEY='energiebalans-v1';
+var S=Object.assign({},DEF);
+try{var raw=localStorage.getItem(KEY);if(raw){var o=JSON.parse(raw);Object.keys(DEF).forEach(function(k){if(o[k]!==undefined&&typeof o[k]===typeof DEF[k])S[k]=o[k]})}}catch(e){}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+
+var GROUPS=[
+ {id:'situ',title:'Jouw situatie nu',open:true,f:[
+  ['kwp','Zonnepanelen','kWp',0.1,''],['yield','Opbrengst per kWp','kWh/jr',10,''],
+  ['batKwh','Accu','kWh',0.5,'0 als je geen accu hebt'],['batKw','Accuvermogen','kW',0.5,''],
+  ['rt','Accurendement','%',1,'laden plus ontladen'],['elec','Stroomverbruik','kWh/jr',50,'zonder warmtepomp'],
+  ['gas','Gasverbruik','m³/jr',25,''],['boilerEff','Rendement cv-ketel','%',1,''],
+  ['shHeat','Gas voor verwarming','%',1,''],['shDhw','Gas voor warm water','%',1,'de rest is koken']
+ ]},
+ {id:'tarief',title:'Tarieven (aannames)',open:false,f:[
+  ['eb','Energiebelasting','€/kWh',0.005,'excl. btw'],['inkoop','Inkoopkosten leverancier','€/kWh',0.005,'excl. btw'],
+  ['btw','Btw','%',1,''],['feedFee','Terugleverkosten','€/kWh',0.005,'wordt van de marktprijs afgetrokken'],
+  ['gasPrice','Gasprijs','€/m³',0.01,'alles inbegrepen'],['gasFixed','Vaste kosten gasaansluiting','€/jr',10,'vervallen zonder gas'],
+  ['growth','Verwachte prijsstijging','%/jr',0.5,'telt mee in terugverdientijd']
+ ]}
+];
+var CHOICE_FIELDS_ACCU=[['modKwh','Per extra accu','kWh',0.5,''],['modKw','Vermogen per accu','kW',0.5,''],['priceAccu','Prijs per accu, geplaatst','€',100,'']];
+var CHOICE_FIELDS_PV=[['extraKwp','Extra panelen','kWp',0.1,''],['pricePv','Prijs per kWp, geplaatst','€/kWp',50,'']];
+var CHOICE_FIELDS_HP=[['hpScop','Rendement (SCOP)','',0.1,'kWh warmte per kWh stroom'],['hpCov','Dekt van je verwarming','%',5,''],
+  ['hpPrice','Prijs, geplaatst','€',250,'vul je offerte in'],['hpSub','Subsidie (ISDE)','€',100,'vul zelf in'],
+  ['hpMaint','Onderhoud warmtepomp','€/jr',10,''],['ketelMaint','Onderhoud ketel dat vervalt','€/jr',10,'alleen als je van het gas af gaat'],
+  ['hpOther','Overige kosten','€',250,'bv. radiatoren of isolatie']];
+
+function fieldHTML(f){
+  return '<div class="f"><label for="i_'+f[0]+'">'+esc(f[1])+'</label><div class="row"><input type="number" inputmode="decimal" id="i_'+f[0]+'" data-k="'+f[0]+'" step="'+f[3]+'" min="0" value="'+S[f[0]]+'">'+(f[2]?'<span class="u">'+esc(f[2])+'</span>':'')+'</div>'+(f[4]?'<span class="h">'+esc(f[4])+'</span>':'')+'</div>';
+}
+function renderInputs(){
+  var h='';
+  GROUPS.forEach(function(g){
+    h+='<details class="card"'+(g.open?' open':'')+'><summary>'+esc(g.title)+'</summary><div class="fields">'+g.f.map(fieldHTML).join('')+'</div></details>';
+  });
+  h+='<details class="card" open><summary>Wat wil je veranderen</summary><div class="fields">';
+  h+='<div class="f wide"><label>Extra accu\'s</label><div class="seg" id="segAccu">'+[0,1,2].map(function(n){return '<button type="button" data-n="'+n+'" aria-pressed="'+(S.nAccu===n)+'">'+n+'</button>'}).join('')+'</div></div>';
+  h+=CHOICE_FIELDS_ACCU.map(fieldHTML).join('');
+  h+='<label class="chk wide f" style="grid-column:1/-1"><input type="checkbox" id="i_arb"'+(S.arb?' checked':'')+'><span>Accu ook op goedkope uren uit het net laden (dynamisch contract, alleen in de winter)</span></label>';
+  h+=CHOICE_FIELDS_PV.map(fieldHTML).join('');
+  h+='<div class="f wide"><label for="i_hpType">Warmtepomp</label><select id="i_hpType">'+Object.keys(PRESETS).map(function(k){return '<option value="'+k+'"'+(S.hpType===k?' selected':'')+'>'+esc(PRESETS[k].label)+'</option>'}).join('')+'</select><span class="h">Kies een type, daarna kun je alle waarden zelf aanpassen. Prijzen zijn globale voorbeeldwaarden.</span></div>';
+  h+='<div class="fields" id="hpFields" style="padding:0;grid-column:1/-1" '+(S.hpType==='none'?'hidden':'')+'>'+CHOICE_FIELDS_HP.map(fieldHTML).join('')+
+     '<label class="chk f" style="grid-column:1/-1"><input type="checkbox" id="i_hpDhw"'+(S.hpDhw?' checked':'')+'><span>Warm water ook met de warmtepomp (en koken elektrisch, als de pomp 100% van de verwarming dekt)</span></label></div>';
+  h+='</div></details>';
+  $('#inp').innerHTML=h;
+}
+function paramsFrom(S){
+  return {kwp:S.kwp,yield:S.yield,batKwh:S.batKwh,batKw:S.batKw,rt:Math.max(.5,S.rt/100),minSoc:.1,
+    elec:S.elec,gas:S.gas,shHeat:S.shHeat/100,shDhw:S.shDhw/100,boilerEff:S.boilerEff/100,
+    eb:S.eb,inkoop:S.inkoop,btw:S.btw/100,feedFee:S.feedFee,gasPrice:S.gasPrice,gasFixed:S.gasFixed,
+    ketelMaint:S.ketelMaint,curtail:true,arb:S.arb};
+}
+
+/* ---------- Charts ---------- */
+function niceStep(r){var p=Math.pow(10,Math.floor(Math.log10(r)));var n=r/p;return (n<=1?1:n<=2?2:n<=2.5?2.5:n<=5?5:10)*p}
+function axis(min,max){
+  if(max<=min)max=min+1;
+  var st=niceStep((max-min)/4);
+  return {min:Math.floor(min/st+1e-9)*st,max:Math.ceil(max/st-1e-9)*st,step:st};
+}
+function fmtTick(v,step){return step<1?nf1.format(v):nf0.format(v)}
+var CH={}; // per chart: laatste config, voor herteken en tabel
+
+function lineChart(id,cfg){
+  var host=$('#'+id);host.innerHTML='';
+  var W=Math.max(280,host.clientWidth),Hh=cfg.h||240,m={l:46,r:12,t:10,b:24};
+  var pw=W-m.l-m.r,ph=Hh-m.t-m.b;
+  var lo=0,hi=0;
+  cfg.series.forEach(function(s){s.vals.forEach(function(v){if(v<lo)lo=v;if(v>hi)hi=v})});
+  var ax=axis(lo,hi);
+  var n=cfg.labels.length;
+  function X(i){return m.l+(n===1?pw/2:i/(n-1)*pw)}
+  function Y(v){return m.t+ph-(v-ax.min)/(ax.max-ax.min)*ph}
+  var g='';
+  for(var v=ax.min;v<=ax.max+ax.step/2;v+=ax.step){
+    g+='<line x1="'+m.l+'" x2="'+(W-m.r)+'" y1="'+Y(v)+'" y2="'+Y(v)+'" stroke="var(--grid)" stroke-width="1"/>';
+    g+='<text x="'+(m.l-8)+'" y="'+(Y(v)+4)+'" text-anchor="end" font-size="11" fill="var(--muted)" font-family="var(--mono)">'+fmtTick(v,ax.step)+'</text>';
+  }
+  g+='<line x1="'+m.l+'" x2="'+(W-m.r)+'" y1="'+Y(0)+'" y2="'+Y(0)+'" stroke="var(--axis)" stroke-width="1"/>';
+  var every=cfg.every||Math.ceil(n/Math.floor(pw/42));
+  cfg.labels.forEach(function(l,i){if(i%every===0)g+='<text x="'+X(i)+'" y="'+(Hh-6)+'" text-anchor="middle" font-size="11" fill="var(--muted)" font-family="var(--mono)">'+esc(l)+'</text>'});
+  cfg.series.forEach(function(s){
+    var d=s.vals.map(function(v,i){return (i?'L':'M')+X(i).toFixed(1)+' '+Y(v).toFixed(1)}).join(' ');
+    if(cfg.area){g+='<path d="'+d+' L'+X(n-1)+' '+Y(0)+' L'+X(0)+' '+Y(0)+' Z" fill="'+s.color+'" opacity=".12"/>'}
+    g+='<path d="'+d+'" fill="none" stroke="'+s.color+'" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>';
+  });
+  if(cfg.mark){var mx=m.l+cfg.mark.x/(n-1)*pw;
+    g+='<circle cx="'+mx+'" cy="'+Y(0)+'" r="5" fill="var(--surface)" stroke="var(--ink)" stroke-width="2"/>';
+    g+='<text x="'+Math.min(Math.max(mx,m.l+60),W-m.r-60)+'" y="'+(Y(0)-12)+'" text-anchor="middle" font-size="12" font-weight="600" fill="var(--ink)">'+esc(cfg.mark.label)+'</text>';}
+  g+='<line id="'+id+'_cx" y1="'+m.t+'" y2="'+(m.t+ph)+'" stroke="var(--ink2)" stroke-width="1" stroke-dasharray="3 3" style="display:none"/>';
+  g+='<g id="'+id+'_dots"></g>';
+  g+='<rect id="'+id+'_ov" x="'+m.l+'" y="'+m.t+'" width="'+pw+'" height="'+ph+'" fill="transparent" style="touch-action:pan-y"/>';
+  host.insertAdjacentHTML('beforeend','<svg viewBox="0 0 '+W+' '+Hh+'" height="'+Hh+'" role="img" aria-label="'+esc(cfg.aria||'Grafiek')+'">'+g+'</svg><div class="tt" id="'+id+'_tt" hidden></div>');
+  var ov=$('#'+id+'_ov'),cx=$('#'+id+'_cx'),dots=$('#'+id+'_dots'),tt=$('#'+id+'_tt');
+  function move(e){
+    var r=ov.getBoundingClientRect();var px=(e.clientX-r.left)/r.width;
+    var i=Math.max(0,Math.min(n-1,Math.round(px*(n-1))));
+    var x=X(i);cx.setAttribute('x1',x);cx.setAttribute('x2',x);cx.style.display='';
+    dots.innerHTML=cfg.series.map(function(s){return '<circle cx="'+x+'" cy="'+Y(s.vals[i])+'" r="4" fill="'+s.color+'" stroke="var(--surface)" stroke-width="2"/>'}).join('');
+    tt.innerHTML='<b>'+esc(cfg.tipLabel?cfg.tipLabel(i):cfg.labels[i])+'</b>'+cfg.series.map(function(s){return '<div><span class="dot" style="background:'+s.color+'"></span>'+esc(s.name)+': '+cfg.fmt(s.vals[i])+'</div>'}).join('');
+    tt.hidden=false;
+    var tw=tt.offsetWidth,left=x*(host.clientWidth/W)+12;
+    if(left+tw>host.clientWidth)left=x*(host.clientWidth/W)-tw-12;
+    tt.style.left=Math.max(0,left)+'px';tt.style.top='8px';
+  }
+  function leave(){cx.style.display='none';dots.innerHTML='';tt.hidden=true}
+  ov.addEventListener('pointermove',move);ov.addEventListener('pointerdown',move);ov.addEventListener('pointerleave',leave);
+}
+
+function stackChart(id,cfg){
+  var host=$('#'+id);host.innerHTML='';
+  var W=Math.max(280,host.clientWidth),Hh=240,m={l:46,r:8,t:10,b:24};
+  var pw=W-m.l-m.r,ph=Hh-m.t-m.b,n=cfg.labels.length;
+  var tot=cfg.labels.map(function(_,i){return cfg.series.reduce(function(a,s){return a+s.vals[i]},0)});
+  var ax=axis(0,Math.max.apply(null,tot)*1.02);
+  function Y(v){return m.t+ph-v/ax.max*ph}
+  var band=pw/n,bw=Math.max(6,Math.min(band*0.62,34));
+  var g='';
+  for(var v=0;v<=ax.max+ax.step/2;v+=ax.step){
+    g+='<line x1="'+m.l+'" x2="'+(W-m.r)+'" y1="'+Y(v)+'" y2="'+Y(v)+'" stroke="var(--grid)"/>';
+    g+='<text x="'+(m.l-8)+'" y="'+(Y(v)+4)+'" text-anchor="end" font-size="11" fill="var(--muted)" font-family="var(--mono)">'+fmtTick(v,ax.step)+'</text>';
+  }
+  for(var i=0;i<n;i++){
+    var x=m.l+band*i+(band-bw)/2,acc=0;
+    if(cfg.sel===i)g+='<rect x="'+(m.l+band*i)+'" y="'+m.t+'" width="'+band+'" height="'+ph+'" fill="var(--wash)"/>';
+    cfg.series.forEach(function(s,si){
+      var v=s.vals[i];if(v<=0)return;
+      var y1=Y(acc+v),y0=Y(acc);acc+=v;
+      var hgt=Math.max(0,y0-y1-2);
+      g+='<rect x="'+x+'" y="'+y1+'" width="'+bw+'" height="'+hgt+'" fill="'+s.color+'" rx="2"/>';
+    });
+    g+='<text x="'+(m.l+band*i+band/2)+'" y="'+(Hh-6)+'" text-anchor="middle" font-size="11" fill="var(--muted)" font-family="var(--mono)">'+(band<30&&i%2?'':esc(cfg.labels[i]))+'</text>';
+  }
+  g+='<line x1="'+m.l+'" x2="'+(W-m.r)+'" y1="'+Y(0)+'" y2="'+Y(0)+'" stroke="var(--axis)"/>';
+  g+='<rect id="'+id+'_ov" x="'+m.l+'" y="'+m.t+'" width="'+pw+'" height="'+ph+'" fill="transparent" style="touch-action:pan-y"/>';
+  host.insertAdjacentHTML('beforeend','<svg viewBox="0 0 '+W+' '+Hh+'" height="'+Hh+'" role="img" aria-label="'+esc(cfg.aria)+'">'+g+'</svg><div class="tt" id="'+id+'_tt" hidden></div>');
+  var ov=$('#'+id+'_ov'),tt=$('#'+id+'_tt');
+  function move(e){
+    var r=ov.getBoundingClientRect();var i=Math.max(0,Math.min(n-1,Math.floor((e.clientX-r.left)/r.width*n)));
+    tt.innerHTML='<b>'+esc(cfg.names[i])+'</b>'+cfg.series.map(function(s){return '<div><span class="dot" style="background:'+s.color+'"></span>'+esc(s.name)+': '+kwh(s.vals[i])+' kWh</div>'}).join('')+'<div style="margin-top:3px;color:var(--ink2)">Totaal: '+kwh(tot[i])+' kWh</div>';
+    tt.hidden=false;var cxp=(m.l+band*i+band/2)*(host.clientWidth/W),tw=tt.offsetWidth;
+    var left=cxp+14;if(left+tw>host.clientWidth)left=cxp-tw-14;tt.style.left=Math.max(0,left)+'px';tt.style.top='8px';
+  }
+  ov.addEventListener('pointermove',move);ov.addEventListener('pointerdown',move);ov.addEventListener('pointerleave',function(){tt.hidden=true});
+}
+
+function legend(id,items){
+  $('#'+id).innerHTML=items.map(function(s){return '<span><span class="dot" style="background:'+s.color+'"></span>'+esc(s.name)+'</span>'}).join('');
+}
+function tableHTML(head,rows){
+  return '<table><thead><tr>'+head.map(function(h){return '<th>'+esc(h)+'</th>'}).join('')+'</tr></thead><tbody>'+rows.map(function(r){return '<tr>'+r.map(function(c){return '<td>'+esc(c)+'</td>'}).join('')+'</tr>'}).join('')+'</tbody></table>';
+}
+
+/* ---------- Overzicht ---------- */
+var COL={zon:'var(--zon)',verb:'var(--verb)',accu:'var(--accu)',net:'var(--net)'};
+function renderPeriodOptions(){
+  var cur=$('#period').value||String(new Date().getMonth());
+  $('#period').innerHTML='<option value="all">Heel jaar</option>'+MNL.map(function(n,i){return '<option value="'+i+'">'+n[0].toUpperCase()+n.slice(1)+'</option>'}).join('');
+  $('#period').value=cur;
+}
+var cache={};
+function renderOverview(){
+  var P=paramsFrom(S),D=prepare(P);
+  var C={kwp:P.kwp,batKwh:P.batKwh,batKw:P.batKw,hp:null};
+  var r=simulate(P,C,D,true);cache.base=r;
+  var sel=$('#period').value,all=sel==='all',mi=all?-1:+sel;
+  var agg={pv:0,load:0,direct:0,chPV:0,chGrid:0,dis:0,imp:0,exp:0,cost:0};
+  r.mon.forEach(function(o,i){if(all||i===mi)Object.keys(agg).forEach(function(k){agg[k]+=o[k]})});
+  var label=all?'heel jaar':MNL[mi];
+  var tiles=[
+    ['Zonne-opbrengst',agg.pv,COL.zon],['Verbruik',agg.load,COL.verb],['Naar accu',agg.chPV+agg.chGrid,COL.accu],
+    ['Uit accu',agg.dis,COL.accu],['Van het net',agg.imp,COL.net],['Terug aan het net',agg.exp,COL.net]
+  ];
+  $('#tiles').innerHTML=tiles.map(function(t){return '<div class="tile"><div class="k"><span class="dot" style="background:'+t[2]+'"></span>'+t[0]+'</div><div class="v">'+kwh(t[1])+'<small>kWh</small></div></div>'}).join('');
+  var self=agg.load>0?(agg.direct+agg.dis)/agg.load*100:0,eig=agg.pv>0?(agg.direct+agg.chPV)/agg.pv*100:0;
+  $('#sumline').innerHTML='In <b>'+label+'</b> dekt je eigen opwekking <b>'+nf0.format(self)+'%</b> van je verbruik en gebruik je <b>'+nf0.format(eig)+'%</b> van je opbrengst zelf. Stroom netto: <b>'+eur(agg.cost)+'</b>'+(agg.cost<0?' (je houdt over)':'')+'.';
+  // gemiddelde dag
+  var days=0,sum={pv:new Float64Array(24),load:new Float64Array(24),acc:new Float64Array(24),net:new Float64Array(24)};
+  for(var m=0;m<12;m++){if(all||m===mi){days+=MD[m];for(var h=0;h<24;h++){['pv','load','acc','net'].forEach(function(k){sum[k][h]+=r.prof[m][k][h]})}}}
+  function avg(k){return Array.prototype.map.call(sum[k],function(v){return v/days})}
+  var hl=[];for(var h2=0;h2<24;h2++)hl.push((h2<10?'0':'')+h2);
+  var ser=[{name:'Opbrengst',color:COL.zon,vals:avg('pv')},{name:'Verbruik',color:COL.verb,vals:avg('load')},
+    {name:'Accu (laden +, ontladen −)',color:COL.accu,vals:avg('acc')},{name:'Net (inkoop +, terug −)',color:COL.net,vals:avg('net')}];
+  $('#dayTitle').textContent='Gemiddelde dag, '+label;
+  legend('legDay',ser);
+  CH.day={labels:hl,series:ser,fmt:function(v){return nf2.format(v)+' kWh'},tipLabel:function(i){return hl[i]+':00 tot '+hl[i]+':59'},every:3,aria:'Gemiddeld verloop per uur van opbrengst, verbruik, accu en net'};
+  lineChart('chDay',CH.day);
+  $('#tbDay').innerHTML=tableHTML(['Uur'].concat(ser.map(function(s){return s.name+' (kWh)'})),hl.map(function(l,i){return [l+':00'].concat(ser.map(function(s){return nf2.format(s.vals[i])}))}));
+  // per maand
+  var s2=[{name:'Direct van zon',color:COL.zon,vals:r.mon.map(function(o){return o.direct})},
+          {name:'Uit accu',color:COL.accu,vals:r.mon.map(function(o){return o.dis})},
+          {name:'Van het net',color:COL.net,vals:r.mon.map(function(o){return o.imp-o.chGrid})}];
+  legend('legMon',s2);
+  CH.mon={labels:MN,names:MNL.map(function(n){return n[0].toUpperCase()+n.slice(1)}),series:s2,sel:all?-1:mi,aria:'Per maand waar je verbruik vandaan komt: zon, accu of net'};
+  stackChart('chMon',CH.mon);
+  $('#tbMon').innerHTML=tableHTML(['Maand'].concat(s2.map(function(s){return s.name+' (kWh)'})),MN.map(function(l,i){return [l].concat(s2.map(function(s){return kwh(s.vals[i])}))}));
+}
+
+/* ---------- Scenario's ---------- */
+function hpCfg(){return S.hpType==='none'?null:{scop:Math.max(1,S.hpScop),coverage:Math.min(100,S.hpCov)/100,dhw:S.hpDhw,maint:S.hpMaint}}
+function renderScenario(){
+  var P=paramsFrom(S),D=prepare(P),n=S.nAccu;
+  var base={kwp:P.kwp,batKwh:P.batKwh,batKw:P.batKw,hp:null};
+  var cAcc=Object.assign({},base,{batKwh:P.batKwh+n*S.modKwh,batKw:P.batKw+n*S.modKw});
+  var cPv=Object.assign({},base,{kwp:P.kwp+S.extraKwp});
+  var hp=hpCfg(),cHp=Object.assign({},base,{hp:hp});
+  var cAll={kwp:cPv.kwp,batKwh:cAcc.batKwh,batKw:cAcc.batKw,hp:hp};
+  var inv={acc:n*S.priceAccu,pv:S.extraKwp*S.pricePv,hp:hp?Math.max(0,S.hpPrice-S.hpSub)+S.hpOther:0};
+  var rBase=simulate(P,base,D),rAll=simulate(P,cAll,D);
+  var rows=[];
+  function row(name,active,c,invest){
+    if(!active){rows.push({name:name,off:true});return}
+    var r=simulate(P,c,D),sv=rBase.total-r.total,cs=cumSeries(invest,sv,S.growth/100,30);
+    rows.push({name:name,invest:invest,saving:sv,pay:paybackFrom(cs)});
+  }
+  row(n===1?'Extra accu':'Extra accu’s',n>0,cAcc,inv.acc);
+  row('Extra panelen',S.extraKwp>0,cPv,inv.pv);
+  row('Warmtepomp',!!hp,cHp,inv.hp);
+  var invAll=inv.acc+inv.pv+inv.hp,savAll=rBase.total-rAll.total;
+  var cum=cumSeries(invAll,savAll,S.growth/100,20),payAll=paybackFrom(cum);
+  var cum15=cum[15];
+  var any=n>0||S.extraKwp>0||!!hp;
+  function payTxt(p,sv){return p===null?(sv<=0?'geen':'> 30 jaar'):(p===0?'direct':nf1.format(p)+' jaar')}
+  var h='';
+  if(!any){h+='<section class="card"><h2>Kies wat je wilt veranderen</h2><p class="note" style="margin-top:6px">Zet een extra accu, extra panelen of een warmtepomp aan bij “Wat wil je veranderen”. Het resultaat verschijnt hier.</p></section>'}
+  else{
+    h+='<section class="card"><div class="hero">'+
+      '<div><div class="k">Besparing per jaar</div><div class="v '+(savAll>=0?'pos':'neg')+'">'+eur(savAll)+'</div><div class="s">eerste jaar</div></div>'+
+      '<div><div class="k">Investering</div><div class="v">'+eur(invAll)+'</div><div class="s">na subsidie</div></div>'+
+      '<div><div class="k">Terugverdientijd</div><div class="v">'+payTxt(payAll,savAll)+'</div><div class="s">met '+nf1.format(S.growth)+'% prijsstijging</div></div>'+
+      '<div><div class="k">Saldo na 15 jaar</div><div class="v '+(cum15>=0?'pos':'neg')+'">'+eur(cum15)+'</div><div class="s">zonder restwaarde</div></div>'+
+      '</div></section>';
+    h+='<section class="card"><h3>Effect per keuze, afzonderlijk</h3><div class="tblwrap"><table><thead><tr><th>Keuze</th><th>Investering</th><th>Per jaar</th><th>Terugverdiend</th></tr></thead><tbody>'+
+      rows.map(function(r){return r.off?'<tr><td>'+esc(r.name)+'</td><td colspan="3" style="color:var(--muted)">niet gekozen</td></tr>':'<tr><td>'+esc(r.name)+'</td><td>'+eur(r.invest)+'</td><td>'+eur(r.saving)+'</td><td>'+payTxt(r.pay,r.saving)+'</td></tr>'}).join('')+
+      '<tr class="tot"><td>Alles samen</td><td>'+eur(invAll)+'</td><td>'+eur(savAll)+'</td><td>'+payTxt(payAll,savAll)+'</td></tr></tbody></table></div>'+
+      '<p class="note" style="margin-top:8px">Samen is niet de som van de losse effecten: een warmtepomp vergroot je verbruik, waardoor extra panelen en een accu meer opleveren, en andersom.</p></section>';
+    h+='<section class="card"><div class="chead"><h2>Cumulatief resultaat, 20 jaar</h2></div><div class="chart" id="chCum"></div></section>';
+    h+='<section class="card"><h3>Huidig tegenover scenario, per jaar</h3><div class="tblwrap"><table><thead><tr><th></th><th>Huidig</th><th>Scenario</th></tr></thead><tbody>'+
+      '<tr><td>Zonne-opbrengst</td><td>'+kwh(rBase.t.pv)+' kWh</td><td>'+kwh(rAll.t.pv)+' kWh</td></tr>'+
+      '<tr><td>Totaal stroomverbruik</td><td>'+kwh(rBase.t.load)+' kWh</td><td>'+kwh(rAll.t.load)+' kWh</td></tr>'+
+      '<tr><td>Van het net</td><td>'+kwh(rBase.t.imp)+' kWh</td><td>'+kwh(rAll.t.imp)+' kWh</td></tr>'+
+      '<tr><td>Terug aan het net</td><td>'+kwh(rBase.t.exp)+' kWh</td><td>'+kwh(rAll.t.exp)+' kWh</td></tr>'+
+      '<tr><td>Afgeregeld (negatieve prijs)</td><td>'+kwh(rBase.t.curt)+' kWh</td><td>'+kwh(rAll.t.curt)+' kWh</td></tr>'+
+      '<tr><td>Gasverbruik</td><td>'+kwh(rBase.gasM3)+' m³</td><td>'+kwh(rAll.gasM3)+' m³</td></tr>'+
+      '<tr><td>Stroomkosten netto</td><td>'+eur(rBase.elecCost)+'</td><td>'+eur(rAll.elecCost)+'</td></tr>'+
+      '<tr><td>Gaskosten incl. vaste kosten</td><td>'+eur(rBase.gasCost)+'</td><td>'+eur(rAll.gasCost)+'</td></tr>'+
+      '<tr><td>Onderhoud (verschil)</td><td>'+eur(0)+'</td><td>'+eur(rAll.other)+'</td></tr>'+
+      '<tr class="tot"><td>Totaal per jaar</td><td>'+eur(rBase.total)+'</td><td>'+eur(rAll.total)+'</td></tr></tbody></table></div></section>';
+  }
+  h+='<div class="note card"><b>Waar deze berekening op rust</b><ul>'+
+    '<li>Voorbeeldprofielen voor een heel jaar, uur voor uur: opbrengst, verbruik en dynamische uurprijzen. Geen echte meetdata.</li>'+
+    '<li>Teruglevering tegen marktprijs min terugleverkosten, dus zonder salderen. Bij een negatieve prijs wordt je opbrengst afgeregeld.</li>'+
+    '<li>Accu laadt met zonne-overschot en levert aan je huis. Degradatie en restwaarde zijn niet meegenomen.</li>'+
+    '<li>Warmtepomp: gasverbruik wordt omgerekend naar warmte (9,77 kWh per m³) en gedeeld door het SCOP. Isolatie en afgiftesysteem bepalen in de praktijk of dat SCOP haalbaar is.</li>'+
+    '<li>Tarieven, prijzen en subsidie zijn aannames die je zelf kunt aanpassen.</li></ul></div>';
+  $('#res').innerHTML=h;
+  if(any){
+    var labels=[];for(var y=0;y<=20;y++)labels.push(String(y));
+    CH.cum={labels:labels,series:[{name:'Cumulatief',color:COL.zon,vals:cum}],area:true,fmt:eur,tipLabel:function(i){return 'Na '+i+' jaar'},every:2,aria:'Cumulatief resultaat van de investering over 20 jaar',
+      mark:(payAll!==null&&payAll>0&&payAll<=20)?{x:payAll,label:'Terugverdiend na '+nf1.format(payAll)+' jaar'}:null};
+    lineChart('chCum',CH.cum);
+  }
+}
+
+/* ---------- Events ---------- */
+var raf=0;
+function refresh(){cancelAnimationFrame(raf);raf=requestAnimationFrame(function(){renderOverview();renderScenario()})}
+var inp=$('#inp');
+inp.addEventListener('input',function(e){
+  var t=e.target;
+  if(t.dataset&&t.dataset.k){var v=parseFloat(String(t.value).replace(',','.'));if(isNaN(v))return;S[t.dataset.k]=v;
+    if(['hpScop','hpCov','hpPrice','hpMaint','hpSub','hpOther'].indexOf(t.dataset.k)>=0&&S.hpType!=='eigen'&&S.hpType!=='none'){S.hpType='eigen';var sel=$('#i_hpType');if(sel)sel.value='eigen'}
+    save();refresh()}
+});
+inp.addEventListener('change',function(e){
+  var t=e.target;
+  if(t.id==='i_arb'){S.arb=t.checked;save();refresh()}
+  if(t.id==='i_hpDhw'){S.hpDhw=t.checked;save();refresh()}
+  if(t.id==='i_hpType'){
+    S.hpType=t.value;var p=PRESETS[t.value];
+    if(p&&p.scop!==undefined){S.hpScop=p.scop;S.hpCov=p.cov;S.hpDhw=p.dhw;S.hpPrice=p.price;S.hpMaint=p.maint;S.hpSub=0}
+    save();var open=Array.prototype.map.call(inp.querySelectorAll('details'),function(d){return d.open});
+    renderInputs();Array.prototype.forEach.call(inp.querySelectorAll('details'),function(d,i){d.open=open[i]});refresh();
+  }
+});
+inp.addEventListener('click',function(e){
+  var b=e.target.closest('#segAccu button');if(!b)return;
+  S.nAccu=+b.dataset.n;save();
+  Array.prototype.forEach.call(inp.querySelectorAll('#segAccu button'),function(x){x.setAttribute('aria-pressed',String(+x.dataset.n===S.nAccu))});refresh();
+});
+$('#period').addEventListener('change',refresh);
+document.querySelectorAll('.tbtn').forEach(function(b){
+  b.addEventListener('click',function(){
+    var k=b.dataset.tbl,t=$('#tb'+(k==='day'?'Day':'Mon')),c=$('#ch'+(k==='day'?'Day':'Mon'));
+    var show=t.hidden;t.hidden=!show;c.hidden=show;b.textContent=show?'Grafiek':'Tabel';
+  });
+});
+var TABS=['overzicht','scenario','bronnen'];
+function showTab(name){
+  if(TABS.indexOf(name)<0)name='overzicht';
+  TABS.forEach(function(t){$('#tab-'+t).hidden=t!==name});
+  document.querySelectorAll('nav button').forEach(function(b){b.setAttribute('aria-selected',String(b.dataset.tab===name))});
+  if(name!=='bronnen')refresh();
+}
+document.querySelectorAll('nav button').forEach(function(b){b.addEventListener('click',function(){location.hash=b.dataset.tab;showTab(b.dataset.tab)})});
+window.addEventListener('hashchange',function(){showTab(location.hash.slice(1))});
+var rt=0;window.addEventListener('resize',function(){clearTimeout(rt);rt=setTimeout(refresh,120)});
+
+renderInputs();renderPeriodOptions();
+showTab(location.hash.slice(1));
+})();
+</script>
+
+</body>
+</html>
