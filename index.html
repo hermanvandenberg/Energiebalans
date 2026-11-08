@@ -181,10 +181,10 @@ details.card[open]>summary::after{content:'\2212'}
     <div class="card">
       <span class="st"><i style="font-style:normal">!</i>Niet gekoppeld</span>
       <h2>SolarEdge</h2>
-      <p>Zonnepanelen en accu via de SolarEdge Monitoring API.</p>
+      <p>Opbrengst en verbruik per uur via de SolarEdge Monitoring API (v2).</p>
       <ul>
-        <li>Nodig: API-key en site-ID uit het monitoringportaal</li>
-        <li>Levert: opbrengst, verbruik, netinkoop, teruglevering, laden en ontladen van de accu, in kwartieren</li>
+        <li>Nodig: een eigen app op <a href="https://developer.solaredge.com" target="_blank" rel="noopener">developer.solaredge.com</a> en één keer toestemming</li>
+        <li>Status: <span id="stSe">nog niet opgehaald</span></li>
       </ul>
     </div>
     <div class="card">
@@ -195,28 +195,36 @@ details.card[open]>summary::after{content:'\2212'}
         <li>Prijzen zijn openbaar beschikbaar</li>
         <li>Voor je eigen verbruik is inloggen met je Frank-account nodig</li>
         <li>De API is niet officieel gedocumenteerd en kan wijzigen</li>
+        <li>Status: <span id="stFr">nog niet opgehaald</span></li>
       </ul>
     </div>
     <div class="card">
       <h2>Hoe de koppeling loopt</h2>
-      <p style="margin-bottom:10px">Elke ochtend haalt GitHub de data op met je keys uit GitHub Secrets, versleutelt die met je wachtwoord en zet hem hier klaar. Je keys komen nooit in deze pagina.</p>
-      <div class="flow"><span class="b">SolarEdge</span>+<span class="b">Frank</span>→<span class="b">GitHub Actions</span>→<span class="b">versleuteld</span>→<span class="b">dashboard</span></div>
+      <p style="margin-bottom:10px">Wat je hieronder invult, versleutelt deze pagina met een sleutel die alleen GitHub Actions kan openen. Elke ochtend haalt GitHub de data op en zet hem, versleuteld met jouw wachtwoord, hier klaar.</p>
+      <div class="flow"><span class="b">jij</span>→<span class="b">versleuteld</span>→<span class="b">GitHub Actions</span>→<span class="b">SolarEdge + Frank</span>→<span class="b">dashboard</span></div>
       <ul>
-        <li><a href="https://github.com/hermanvandenberg/Energiebalans/settings/secrets/actions" target="_blank" rel="noopener">Keys instellen (GitHub Secrets)</a></li>
-        <li><a href="https://github.com/hermanvandenberg/Energiebalans/actions/workflows/data.yml" target="_blank" rel="noopener">Nu vernieuwen (Run workflow)</a></li>
+        <li>Laatst bijgewerkt: <span id="stTijd">nog nooit</span></li>
+        <li><a href="https://github.com/hermanvandenberg/Energiebalans/actions/workflows/data.yml" target="_blank" rel="noopener">Voortgang en nu vernieuwen (Run workflow)</a></li>
       </ul>
     </div>
-    <form class="card" id="koppel" hidden>
-      <h2>SolarEdge koppelen</h2>
-      <p style="margin-bottom:10px">Wordt opgeslagen in <span class="mono">.env</span> op deze computer, nooit online. Laat leeg om alleen de data te vernieuwen.</p>
-      <div class="fields" style="padding:0">
-        <div class="f wide"><label for="k_key">API-key</label><input id="k_key" type="password" autocomplete="off" spellcheck="false"></div>
-        <div class="f wide"><label for="k_site">Site-ID</label><input id="k_site" inputmode="numeric" autocomplete="off"></div>
-        <div class="f wide"><label for="k_ww">Wachtwoord voor de online pagina</label><input id="k_ww" type="password" autocomplete="new-password"><span class="h">Minimaal 8 tekens. De data gaat versleuteld naar GitHub; online toon je hem met dit wachtwoord.</span></div>
-        <div class="f wide"><button class="tbtn" type="submit">Opslaan en data ophalen</button><span class="h" id="k_msg" role="status"></span></div>
-      </div>
-    </form>
   </div>
+  <form class="card" id="inst" autocomplete="off">
+    <h2>Instellingen</h2>
+    <p class="note" style="margin:4px 0 12px">Vul alleen in wat je wilt instellen of wijzigen; lege velden blijven zoals ze waren. Niets hiervan wordt op dit apparaat bewaard.</p>
+    <div class="fields" style="padding:0">
+      <h3 class="f wide" style="margin:4px 0 0">1. SolarEdge</h3>
+      <p class="f wide h">Maak op <a href="https://developer.solaredge.com" target="_blank" rel="noopener">developer.solaredge.com</a> een <b>Site Access</b>-app met scope SITE_DATA. Origin URL: <span class="mono">https://hermanvandenberg.github.io</span>, Redirect URI: <span class="mono" id="redir"></span></p>
+      <div class="f wide"><label for="i_cid">Client ID</label><input id="i_cid" spellcheck="false"></div>
+      <div class="f wide"><button class="tbtn" type="button" id="seGa">Toestemming geven bij SolarEdge</button><span class="h" id="seMsg" role="status"></span></div>
+      <div class="f wide"><label for="i_csec">Client Secret</label><input id="i_csec" type="password" spellcheck="false"></div>
+      <h3 class="f wide" style="margin:8px 0 0">2. Frank Energie</h3>
+      <div class="f wide"><label for="i_fmail">E-mail</label><input id="i_fmail" type="email"></div>
+      <div class="f wide"><label for="i_fww">Wachtwoord</label><input id="i_fww" type="password"></div>
+      <h3 class="f wide" style="margin:8px 0 0">3. Wachtwoord voor je data</h3>
+      <div class="f wide"><label for="i_ww">Wachtwoord</label><input id="i_ww" type="password" autocomplete="new-password"><span class="h">Minimaal 8 tekens. Hiermee open je je data op elk apparaat.</span></div>
+      <div class="f wide"><button class="tbtn" type="submit">Versleutelen en naar GitHub</button><span class="h" id="instMsg" role="status"></span></div>
+    </div>
+  </form>
   <p class="note">Tot die tijd rekent het dashboard met vaste voorbeeldprofielen voor een heel jaar (opbrengst per uur, verbruik, uurprijzen). Vul bij Scenario's je eigen jaartotalen in, dan sluiten de uitkomsten al aardig bij je situatie aan.</p>
 </section>
 </div>
@@ -759,9 +767,7 @@ $('#ontgrendel').addEventListener('submit',function(e){
     });
   }).catch(function(){msg.textContent=' Wachtwoord klopt niet.'});
 });
-function loadData(){
-  return fetch('data/energie.json',{cache:'no-store'}).then(function(r){if(!r.ok)throw 0;return r.json()}).catch(versleuteld).then(toon).catch(function(){});
-}
+function loadData(){return versleuteld().then(toon).catch(function(){})}
 function toon(d){
   return Promise.resolve(d).then(function(d){
     var u=useData(d),se=!!(u.opbrengst_kwh||u.verbruik_kwh);
@@ -785,19 +791,63 @@ function toon(d){
   });
 }
 loadData();
-fetch('api/status').then(function(r){if(!r.ok)throw 0;return r.json()}).then(function(s){
-  var f=$('#koppel');f.hidden=false;
-  $('#k_msg').textContent=(s.gekoppeld?' Gekoppeld.':'')+(s.online?' Online versleuteld.':'');
-  f.addEventListener('submit',function(e){
-    e.preventDefault();var msg=$('#k_msg'),btn=f.querySelector('button');
-    btn.disabled=true;msg.textContent=' Bezig, dit duurt een paar minuten...';
-    fetch('api/koppel',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:$('#k_key').value,site:$('#k_site').value,ww:$('#k_ww').value})})
-      .then(function(r){return r.json()}).then(function(j){
-        msg.textContent=j.ok?' Opgeslagen en opgehaald.':' '+j.fout;
-        if(j.ok){$('#k_key').value='';$('#k_site').value='';$('#k_ww').value='';loadData()}
-      }).catch(function(){msg.textContent=' Geen verbinding met het script.'}).then(function(){btn.disabled=false});
-  });
+fetch('status.json',{cache:'no-store'}).then(function(r){if(!r.ok)throw 0;return r.json()}).then(function(s){
+  $('#stTijd').textContent=s.bijgewerkt.replace('T',' ');
+  if(s.solaredge)$('#stSe').textContent=s.solaredge;
+  if(s.frank)$('#stFr').textContent=s.frank;
 }).catch(function(){});
+
+/* ---------- Instellingen ----------
+   Alles wat je invult wordt hier versleuteld met de publieke sleutel (RSA-OAEP + AES-GCM).
+   Alleen GitHub Actions heeft de bijbehorende privésleutel. Het resultaat zet je met één klik op GitHub. */
+var PUBLIEK='';  // gezet door: python haal_data_op.py --sleutel
+var REPO='hermanvandenberg/Energiebalans',REDIR='https://hermanvandenberg.github.io/Energiebalans/';
+var seCode=null,seSite=null;
+function tob64(b){return btoa(String.fromCharCode.apply(null,new Uint8Array(b)))}
+function voorGithub(obj){
+  var tekst=new TextEncoder().encode(JSON.stringify(obj)),iv=crypto.getRandomValues(new Uint8Array(12));
+  return Promise.all([
+    crypto.subtle.importKey('spki',b64(PUBLIEK),{name:'RSA-OAEP',hash:'SHA-256'},false,['encrypt']),
+    crypto.subtle.generateKey({name:'AES-GCM',length:256},true,['encrypt'])
+  ]).then(function(k){
+    return Promise.all([
+      crypto.subtle.exportKey('raw',k[1]).then(function(raw){return crypto.subtle.encrypt({name:'RSA-OAEP'},k[0],raw)}),
+      crypto.subtle.encrypt({name:'AES-GCM',iv:iv},k[1],tekst)
+    ]);
+  }).then(function(r){return {k:tob64(r[0]),iv:tob64(iv),data:tob64(r[1])}});
+}
+$('#redir').textContent=REDIR;
+try{$('#i_cid').value=localStorage.getItem('energiebalans-cid')||''}catch(e){}
+// Terug van SolarEdge: code en site-ID uit de adresbalk halen en meteen weer weghalen.
+(function(){
+  var q=new URLSearchParams(location.search);if(!q.get('code'))return;
+  var st=null;try{st=sessionStorage.getItem('energiebalans-state')}catch(e){}
+  if(q.get('state')&&q.get('state')!==st){$('#seMsg').textContent=' Deze toestemming hoort niet bij deze sessie. Probeer opnieuw.'}
+  else{seCode=q.get('code');seSite=q.get('site_id');$('#seMsg').textContent=' Toestemming ontvangen voor installatie '+(seSite||'?')+'. Vul de rest in en sla binnen een paar minuten op.'}
+  history.replaceState(null,'',location.pathname+'#bronnen');showTab('bronnen');
+})();
+$('#seGa').addEventListener('click',function(){
+  var cid=$('#i_cid').value.trim();if(!cid){$('#seMsg').textContent=' Vul eerst je Client ID in.';return}
+  var st=tob64(crypto.getRandomValues(new Uint8Array(16))).replace(/[^a-zA-Z0-9]/g,'');
+  try{localStorage.setItem('energiebalans-cid',cid);sessionStorage.setItem('energiebalans-state',st)}catch(e){}
+  location.href='https://connect.solaredge.com/authorize?'+new URLSearchParams({client_id:cid,scope:'SITE_DATA',redirect_uri:REDIR,state:st,access_duration:'24'});
+});
+$('#inst').addEventListener('submit',function(e){
+  e.preventDefault();var msg=$('#instMsg');
+  var o={se_client_id:$('#i_cid').value.trim(),se_client_secret:$('#i_csec').value.trim(),se_code:seCode,se_site:seSite,
+    frank_email:$('#i_fmail').value.trim(),frank_wachtwoord:$('#i_fww').value,wachtwoord:$('#i_ww').value};
+  if(!seCode){delete o.se_client_id;delete o.se_client_secret}  // zonder nieuwe toestemming niets aan SolarEdge veranderen
+  Object.keys(o).forEach(function(k){if(!o[k])delete o[k]});
+  if(o.wachtwoord&&o.wachtwoord.length<8){msg.textContent=' Wachtwoord voor je data: minimaal 8 tekens.';return}
+  if(!Object.keys(o).length){msg.textContent=' Er is niets ingevuld.';return}
+  if(!PUBLIEK){msg.textContent=' De publieke sleutel ontbreekt nog in deze pagina.';return}
+  msg.textContent=' Versleutelen...';
+  voorGithub(o).then(function(blob){
+    var url='https://github.com/'+REPO+'/new/main/invoer?'+new URLSearchParams({filename:Date.now()+'.json',value:JSON.stringify(blob),message:'Instellingen bijgewerkt'});
+    msg.innerHTML=' Klaar. <a href="'+esc(url)+'" target="_blank" rel="noopener"><b>Open GitHub</b></a> en klik daar op <b>Commit changes</b>. Daarna haalt GitHub je data op; de eerste keer duurt dat ongeveer 45 minuten.';
+    ['i_csec','i_fmail','i_fww','i_ww'].forEach(function(id){$('#'+id).value=''});seCode=null;
+  }).catch(function(){msg.textContent=' Versleutelen mislukt.'});
+});
 })();
 </script>
 

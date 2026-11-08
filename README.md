@@ -8,49 +8,25 @@ Dashboard voor SolarEdge (zonnepanelen en accu) en Frank Energie (stroom en gas)
 
 Eén bestand (`index.html`), geen build en geen server nodig. Rekenen gebeurt in de browser.
 
-## Status
+## Echte data koppelen
 
-Het dashboard rekent nu met **voorbeeldprofielen** voor een heel jaar (opbrengst, verbruik en uurprijzen per uur). Je eigen jaartotalen en tarieven vul je in bij het tabblad Scenario's. Je invoer wordt bewaard in `localStorage` van je browser.
+Alles gaat via het dashboard, tab **Bronnen → Instellingen**. Je pc hoeft niet aan te staan.
 
-## Online zetten met GitHub Pages
+1. **SolarEdge** (Monitoring API v2): maak op developer.solaredge.com een *Site Access*-app met scope `SITE_DATA`, Origin URL `https://hermanvandenberg.github.io`, Redirect URI `https://hermanvandenberg.github.io/Energiebalans/`. Vul de Client ID in, klik *Toestemming geven*, keur goed bij SolarEdge en vul daarna het Client Secret in.
+2. **Frank Energie**: e-mail en wachtwoord van je Frank-account (voor je gasverbruik; prijzen zijn openbaar).
+3. **Wachtwoord voor je data** (minimaal 8 tekens).
+4. Klik *Versleutelen en naar GitHub*, open de link en klik op GitHub *Commit changes*.
 
-1. Maak een nieuwe repository, bijvoorbeeld `Energiebalans`.
-2. Zet `index.html` en dit bestand in de hoofdmap en push.
-3. Ga naar Settings, Pages, kies "Deploy from a branch", branch `main`, map `/ (root)`.
-4. Na een minuut staat het op `https://<gebruikersnaam>.github.io/Energiebalans/`.
+GitHub Actions (`.github/workflows/data.yml`) haalt daarna de data op, en verder elke ochtend.
 
-Zet de repository op privé als je geen openbare pagina wilt. Pages op een privé repository vraagt een betaald GitHub-abonnement. De pagina bevat geen persoonlijke gegevens, maar plaats later nooit API-keys in de repository.
+### Hoe het veilig blijft
 
-## Echte data
+- De pagina versleutelt je invoer met een publieke sleutel (RSA-OAEP + AES-GCM). Het bijbehorende privé-deel staat alleen in GitHub Secrets (`PRIVE_SLEUTEL`), dus alleen de workflow kan het lezen. Opgeslagen in `instellingen.enc`.
+- De data staat in `energie.enc`, versleuteld met jouw wachtwoord (PBKDF2 600.000 rondes + AES-GCM). Een apparaat onthoudt na ontgrendelen alleen de afgeleide sleutel.
+- `status.json` is openbaar en bevat alleen of het ophalen lukte.
+- SolarEdge geeft per aanroep max. 24 uur uurdata; de eerste keer kost een jaar ~365 van de 2.000 gratis aanroepen per maand (ongeveer 45 minuten), daarna 1 per dag.
 
-`haal_data_op.py` (alleen standaard-Python 3.11, geen pip nodig) haalt de laatste 366 dagen op en schrijft `data/energie.json`:
-
-- Frank Energie: uurprijzen stroom (openbaar), energiebelasting, inkoopkosten en gemiddelde gasprijs.
-- SolarEdge: opbrengst en verbruik per uur, en het piekvermogen (kWp).
-
-```
-python haal_data_op.py --serve
-```
-
-Open http://127.0.0.1:8000, tab Bronnen, vul API-key en site-ID in. Die komen in `.env` (staat in `.gitignore`). Daarna kan `python haal_data_op.py` ook zonder server. Het formulier werkt alleen op je eigen pc, niet op GitHub Pages.
-
-### Automatisch via GitHub (pc hoeft niet aan)
-
-`.github/workflows/data.yml` draait elke ochtend en haalt de data op met de keys uit **Settings → Secrets and variables → Actions**:
-
-| Secret | Waarde |
-|---|---|
-| `ENERGIE_WACHTWOORD` | wachtwoord waarmee de online pagina de data opent (verplicht) |
-| `SOLAREDGE_API_KEY`, `SOLAREDGE_SITE_ID` | uit het SolarEdge-monitoringportaal |
-| `FRANK_EMAIL`, `FRANK_WACHTWOORD` | je Frank-account, voor je eigen gasverbruik |
-
-Handmatig vernieuwen: tab Actions → Data ophalen → Run workflow. Lokaal werkt hetzelfde met deze namen in `.env`.
-
-### Online je eigen data zien
-
-Vul in het formulier ook een wachtwoord in (minimaal 8 tekens). Het script versleutelt de data dan met AES-GCM als `energie.enc` en pusht dat bestand. Op GitHub staat alleen onleesbare data; de online pagina vraagt één keer het wachtwoord en bewaart op dat apparaat alleen de afgeleide sleutel. Je API-key gaat nooit online. Vereist `pip install cryptography`.
-
-`index.html` leest `data/energie.json` (lokaal) of `energie.enc` (online); zonder dat bestand rekent het met de voorbeeldprofielen. Bij nieuwe data worden kWp, opbrengst per kWp, stroomverbruik en tarieven één keer overgenomen in Scenario's.
+Nieuw sleutelpaar (eenmalig, of als de sleutel ooit uitlekt): `pip install pynacl` en `python haal_data_op.py --sleutel`, daarna `index.html` committen en de instellingen opnieuw invullen.
 
 ## Aannames in de berekening
 
