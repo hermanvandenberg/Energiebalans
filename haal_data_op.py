@@ -137,24 +137,56 @@ def haal_frank_prijzen(dagen):
             "inkoopkosten": laatste.get("sourcingMarkupPrice"), "gasprijs": round(sum(gas) / len(gas), 4) if gas else None}
 
 
-def haal_frank_gas(email, ww, dagen):
-    """Eigen gasverbruik via je Frank-account (API niet officieel gedocumenteerd)."""
+FRANK_EIGEN = ("query P($date: String!, $s: String!){ periodUsageAndCosts(date:$date, siteReference:$s){"
+               " gas{ items{ from usage costs } } electricity{ items{ from usage costs } } feedIn{ items{ from usage costs } } } }")
+FRANK_KLANT = "query C($date: String!, $s: String!){ customerMarketPrices(date:$date, siteReference:$s){ electricityPrices{ from allInPrice } } }"
+FRANK_SOORT = {"electricity": ("f_afname_kwh", "f_afname_eur"), "feedIn": ("f_terug_kwh", "f_terug_eur"), "gas": ("f_gas_m3", "f_gas_eur")}
+
+
+def haal_frank_eigen(email, ww, dagen):
+    """Je eigen verbruik, teruglevering en gas per uur met de kosten die Frank rekent, plus jouw all-in uurprijs.
+    De API is niet officieel gedocumenteerd: elk onderdeel dat faalt, blijft gewoon leeg."""
     token = frank("mutation L($email: String!, $password: String!){ login(email:$email, password:$password){ authToken } }",
                   {"email": email, "password": ww})["login"]["authToken"]
     site = frank("query { userSites { reference } }", token=token)["userSites"][0]["reference"]
-    q = "query P($date: String!, $s: String!){ periodUsageAndCosts(date:$date, siteReference:$s){ gas { usageTotal } } }"
+    uit = {k: [None] * H for paar in FRANK_SOORT.values() for k in paar}
+    allin, n_allin = [0.0] * H, [0] * H
 
     def dag(d):
-        try:
-            return frank(q, {"date": d.isoformat(), "s": site}, token)["periodUsageAndCosts"]["gas"]["usageTotal"]
-        except Exception:
-            return None  # bv. een dag van voor je contract
+        r = {}
+        for naam, q in (("k", FRANK_EIGEN), ("p", FRANK_KLANT)):
+            try:
+                r[naam] = frank(q, {"date": d.isoformat(), "s": site}, token)
+            except Exception as e:
+                r[naam + "_fout"] = str(e)[:80]
+        return r
 
     with ThreadPoolExecutor(8) as pool:
-        per_dag = [v for v in pool.map(dag, dagen) if v is not None]
-    if len(per_dag) < 300:
-        raise RuntimeError(f"maar {len(per_dag)} dagen gasverbruik")
-    return {"gas_m3": round(sum(per_dag) * 365 / len(per_dag))}
+        dagen_r = list(pool.map(dag, dagen))
+    for r in dagen_r:
+        for soort, (kk, ke) in FRANK_SOORT.items():
+            for it in ((r.get("k") or {}).get("periodUsageAndCosts") or {}).get(soort, {}).get("items") or []:
+                i = uur_index(lokaal(it["from"]))
+                for sleutel, v in ((kk, it.get("usage")), (ke, it.get("costs"))):
+                    if i is not None and v is not None:
+                        uit[sleutel][i] = round((uit[sleutel][i] or 0) + v, 5)
+        for p in ((r.get("p") or {}).get("customerMarketPrices") or {}).get("electricityPrices") or []:
+            i = uur_index(lokaal(p["from"]))
+            if i is not None and p.get("allInPrice") is not None:  # kwartierprijzen: gemiddelde per uur
+                allin[i] += p["allInPrice"]
+                n_allin[i] += 1
+    uit["prijs_allin"] = [round(a / n, 5) if n else None for a, n in zip(allin, n_allin)]
+    # Alleen de vorm in de (openbare) log, nooit bedragen of verbruik.
+    tel = lambda k: sum(v is not None for v in uit[k])
+    fouten = sorted({v for r in dagen_r for k, v in r.items() if k.endswith("_fout")})
+    print("Frank uren met data:", {k: tel(k) for k in uit}, "teken teruglevering:",
+          "negatief" if sum(v or 0 for v in uit["f_terug_eur"]) < 0 else "positief", "fouten:", fouten[:3])
+    gas = [v for v in uit["f_gas_m3"] if v is not None]
+    gas_dagen = len({lokaal(it["from"]).date() for r in dagen_r
+                     for it in ((r.get("k") or {}).get("periodUsageAndCosts") or {}).get("gas", {}).get("items") or []})
+    if gas_dagen >= 300:
+        uit["gas_m3"] = round(sum(gas) * 365 / gas_dagen)
+    return uit, f"ok: {tel('f_afname_kwh')} uur stroom, {gas_dagen} dagen gas, {tel('prijs_allin')} uur eigen prijs"
 
 
 # ---------- SolarEdge (Monitoring API v2, OAuth) ----------
@@ -270,8 +302,8 @@ def run():
     data.update(haal_frank_prijzen(dagen))
     try:
         if st.get("frank_email") and st.get("frank_wachtwoord"):
-            data.update(haal_frank_gas(st["frank_email"], st["frank_wachtwoord"], dagen))
-            status["frank"] = "ok"
+            eigen, status["frank"] = haal_frank_eigen(st["frank_email"], st["frank_wachtwoord"], dagen)
+            data.update(eigen)
         else:
             status["frank"] = "alleen prijzen (geen login ingevuld)"
     except Exception as e:
