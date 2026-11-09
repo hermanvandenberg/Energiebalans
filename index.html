@@ -218,7 +218,7 @@ details.keuze[open]>summary .aan{color:var(--good)}
     <p class="note" style="margin:4px 0 12px">Vul alleen in wat je wilt instellen of wijzigen; lege velden blijven zoals ze waren. Niets hiervan wordt op dit apparaat bewaard.</p>
     <div class="fields" style="padding:0">
       <h3 class="f wide" style="margin:4px 0 0">1. SolarEdge</h3>
-      <p class="note" style="grid-column:1/-1">Maak op <a href="https://developer.solaredge.com" target="_blank" rel="noopener">developer.solaredge.com</a> een <b>Site Access</b>-app met scope SITE_DATA. Origin URL: <span class="mono">https://hermanvandenberg.github.io</span>, Redirect URI: <span class="mono" id="redir"></span></p>
+      <p class="note" style="grid-column:1/-1">Maak op <a href="https://developer.solaredge.com" target="_blank" rel="noopener">developer.solaredge.com</a> een <b>Site Access</b>-app met de scopes <b>SITE_DATA</b> en <b>DEVICE_DATA</b> (die laatste is nodig voor de meterdata). Origin URL: <span class="mono">https://hermanvandenberg.github.io</span>, Redirect URI: <span class="mono" id="redir"></span></p>
       <div class="f wide"><label for="i_cid">Client ID</label><input id="i_cid" spellcheck="false"></div>
       <div class="f wide"><button class="tbtn" type="button" id="seGa">Toestemming geven bij SolarEdge</button><span class="h" id="seMsg" role="status"></span></div>
       <div class="f wide"><label for="i_csec">Client Secret</label><input id="i_csec" type="password" spellcheck="false"></div>
@@ -898,7 +898,7 @@ $('#seGa').addEventListener('click',function(){
   var cid=$('#i_cid').value.trim();if(!cid){$('#seMsg').textContent=' Vul eerst je Client ID in.';return}
   var st=tob64(crypto.getRandomValues(new Uint8Array(16))).replace(/[^a-zA-Z0-9]/g,'');
   try{localStorage.setItem('energiebalans-cid',cid);sessionStorage.setItem('energiebalans-state',st)}catch(e){}
-  location.href='https://connect.solaredge.com/authorize?'+new URLSearchParams({client_id:cid,scope:'SITE_DATA',redirect_uri:REDIR,state:st,access_duration:'24'});
+  location.href='https://connect.solaredge.com/authorize?'+new URLSearchParams({client_id:cid,scope:'SITE_DATA DEVICE_DATA',response_type:'code',redirect_uri:REDIR,state:st,access_duration:'24'});
 });
 $('#inst').addEventListener('submit',function(e){
   e.preventDefault();var msg=$('#instMsg');

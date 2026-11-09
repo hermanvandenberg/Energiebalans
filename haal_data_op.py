@@ -110,7 +110,8 @@ def http(url, body=None, token=None):
                 time.sleep(int(wacht) + 1)
                 continue
             fout = e.read().decode(errors="replace")[:200]
-            raise RuntimeError(f"HTTP {e.code}: {fout}") from None
+            plek = re.sub(r"\d+", "#", urllib.parse.urlparse(url).path)  # zonder site-ID: status.json is openbaar
+            raise RuntimeError(f"HTTP {e.code} bij {plek}: {fout}") from None
 
 
 def frank(query, variables=None, token=None):

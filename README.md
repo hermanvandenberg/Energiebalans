@@ -12,7 +12,7 @@ Eén bestand (`index.html`), geen build en geen server nodig. Rekenen gebeurt in
 
 Alles gaat via het dashboard, tab **Bronnen → Instellingen**. Je pc hoeft niet aan te staan.
 
-1. **SolarEdge** (Monitoring API v2): maak op developer.solaredge.com een *Site Access*-app met scope `SITE_DATA`, Origin URL `https://hermanvandenberg.github.io`, Redirect URI `https://hermanvandenberg.github.io/Energiebalans/`. Vul de Client ID in, klik *Toestemming geven*, keur goed bij SolarEdge en vul daarna het Client Secret in.
+1. **SolarEdge** (Monitoring API v2): maak op developer.solaredge.com een *Site Access*-app met de scopes `SITE_DATA` en `DEVICE_DATA` (nodig voor meterdata), Origin URL `https://hermanvandenberg.github.io`, Redirect URI `https://hermanvandenberg.github.io/Energiebalans/`. Vul de Client ID in, klik *Toestemming geven*, keur goed bij SolarEdge en vul daarna het Client Secret in.
 2. **Frank Energie**: e-mail en wachtwoord van je Frank-account (voor je gasverbruik; prijzen zijn openbaar).
 3. **Wachtwoord voor je data** (minimaal 8 tekens).
 4. Klik *Versleutelen en naar GitHub*, open de link en klik op GitHub *Commit changes*.
