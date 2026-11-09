@@ -1,5 +1,5 @@
 {
- "bijgewerkt": "2026-11-09T19:30:25",
+ "bijgewerkt": "2026-11-09T19:40:09",
  "frank": "ok",
- "solaredge": "niet gekoppeld"
+ "solaredge": "fout: HTTP 403: {\"type\":\"https://se-api.stoplight.io/docs/monitoring\",\"title\":\"Unauthorized - Authorization Failed\",\"status\":403,\"detail\":\"Authorization Failed\",\"traceId\":\"6af213b15babd6de70c7b71c1a63"
 }
