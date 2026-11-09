@@ -849,6 +849,10 @@ function toon(d){
       if(d.inkoopkosten!=null)S.inkoop=r4(d.inkoopkosten/b);
       if(d.gasprijs!=null)S.gasPrice=r4(d.gasprijs);
       if(d.gas_m3)S.gas=d.gas_m3;
+      var som=function(a){return Array.isArray(a)?a.reduce(function(x,y){return x+(y||0)},0):0};
+      if(u.opbrengst_kwh)S.realPv=Math.round(u.opbrengst_kwh);   // gemeten totalen voor de controleregel
+      if(som(d.import_kwh))S.realImp=Math.round(som(d.import_kwh));
+      if(som(d.export_kwh))S.realExp=Math.round(som(d.export_kwh));
       S.dataStamp=d.gemaakt;save();renderInputs();
     }
     var pill=$('#statusPill');pill.className='pill ok';

@@ -24,7 +24,7 @@ GitHub Actions (`.github/workflows/data.yml`) haalt daarna de data op, en verder
 - De pagina versleutelt je invoer met een publieke sleutel (RSA-OAEP + AES-GCM). Het bijbehorende privé-deel staat alleen in GitHub Secrets (`PRIVE_SLEUTEL`), dus alleen de workflow kan het lezen. Opgeslagen in `instellingen.enc`.
 - De data staat in `energie.enc`, versleuteld met jouw wachtwoord (PBKDF2 600.000 rondes + AES-GCM). Een apparaat onthoudt na ontgrendelen alleen de afgeleide sleutel.
 - `status.json` is openbaar en bevat alleen of het ophalen lukte.
-- SolarEdge geeft per aanroep max. 24 uur uurdata; de eerste keer kost een jaar ~365 van de 2.000 gratis aanroepen per maand (ongeveer 45 minuten), daarna 1 per dag.
+- SolarEdge geeft tellerstanden (zoals je kWh-meter); het script maakt er uurwaarden van. Per dag 2 aanroepen (meters + accu): de eerste keer ~730 van de 2.000 gratis aanroepen per maand (ongeveer 80 minuten), daarna 2 per dag.
 
 Nieuw sleutelpaar (eenmalig, of als de sleutel ooit uitlekt): `pip install pynacl` en `python haal_data_op.py --sleutel`, daarna `index.html` committen en de instellingen opnieuw invullen.
 
