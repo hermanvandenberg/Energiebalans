@@ -238,32 +238,91 @@ def dag_uit_tellers(begin, apparaten):
     return uit
 
 
+def uur_uit_vermogen(begin, dagen, punten, unit):
+    """Vermogen per kwartier (W) -> kWh per uur: elk kwartierpunt telt 1/4 uur mee bij het uur waarin het valt.
+    Uren in de opgevraagde periode zonder punt zijn 0 (bv. de nacht), mits er die periode überhaupt data was."""
+    eind = begin + timedelta(days=dagen)
+    uit = {}
+    for p in punten or []:
+        if p.get("value") is None:
+            continue
+        t = lokaal(p["timestamp"])
+        i = uur_index(t) if begin <= t < eind else None
+        if i is not None:
+            uit[i] = uit.get(i, 0) + max(0.0, wh(p["value"], unit)) / 4000  # W gedurende 1/4 uur -> kWh
+    if uit:
+        for n in range(dagen * 24):
+            i = uur_index(begin + timedelta(hours=n))
+            if i is not None:
+                uit.setdefault(i, 0)
+    return uit
+
+
 def haal_solaredge(st, oud, eind):
-    """Vult het jaar aan met de dagen die nog ontbreken. Per dag 2 aanroepen (meters + accu), de eerste keer ~730."""
+    """Vult het jaar aan met wat nog ontbreekt.
+    Net (afname/teruglevering): meterstanden, 1 aanroep per dag. Zon en accu: vermogen per kwartier, 2 aanroepen per dag.
+    Verbruik = zon + net in - net uit + accu uit - accu in (er is geen aparte verbruiksmeter)."""
     token, site = se_token(st), st["se_site"]
-    if oud.get("se_versie") != 2:  # versie 1 las tellerstanden als uurwaarden: opnieuw beginnen
+    if oud.get("se_versie") not in (2, 3):  # versie 1 las tellerstanden als uurwaarden: opnieuw beginnen
         oud = {}
     uit = {k: oud.get(k) or [None] * H for k in SE_REEKS}
     uit["kwp"] = http(f"{SE}/sites/{site}", token=token).get("peakPower") or oud.get("kwp")
-    uit["se_versie"] = 2
-    van = max(eind - timedelta(days=364), date.fromisoformat(oud["se_tot"]) + timedelta(days=1) if oud.get("se_tot") else date.min)
-    uit["se_tot"] = oud.get("se_tot")
-    d, getoond = van, False
+    uit["se_versie"] = 3
+    jaar = eind - timedelta(days=364)
+    start = lambda k: max(jaar, date.fromisoformat(oud[k]) + timedelta(days=1)) if oud.get(k) else jaar
+    getoond = set()
+
+    def toon(naam, vorm):  # alleen de vorm (veldnamen, aantallen), nooit waarden: de log is openbaar
+        if naam not in getoond:
+            print("SolarEdge", naam + ":", vorm)
+            getoond.add(naam)
+
+    def q(begin, dagen, extra=None):
+        return urllib.parse.urlencode({"from": begin.isoformat(), "to": (begin + timedelta(days=dagen)).isoformat(), **(extra or {})})
+
+    # 1. net: meterstanden
+    uit["se_tot"], d = oud.get("se_tot"), start("se_tot")
     while d <= eind:
         begin = datetime(d.year, d.month, d.day).astimezone()
-        q = urllib.parse.urlencode({"from": (begin - timedelta(hours=1)).isoformat(), "to": (begin + timedelta(hours=24)).isoformat()})
         time.sleep(SE_PAUZE)
-        apparaten = http(f"{SE}/sites/{site}/meters/lifetime-energy?{q}", token=token).get("meters") or []
-        time.sleep(SE_PAUZE)
-        apparaten += http(f"{SE}/sites/{site}/storage/lifetime-energy?{q}", token=token).get("batteries") or []
-        if not getoond:  # alleen de vorm (veldnamen, eenheid, aantal punten), nooit waarden: de log is openbaar
-            print("SolarEdge:", [{k: (len(v) if isinstance(v, list) else v) for k, v in a.items() if k != "serialNumber"} for a in apparaten])
-            getoond = True
-        for sleutel, uren in dag_uit_tellers(begin, apparaten).items():
-            for i, kwh in uren.items():
-                uit[sleutel][i] = round(kwh, 4)
+        meters = http(f"{SE}/sites/{site}/meters/lifetime-energy?{q(begin - timedelta(hours=1), 1)}", token=token).get("meters") or []
+        toon("meters", [{k: (len(v) if isinstance(v, list) else v) for k, v in m.items() if k != "serialNumber"} for m in meters])
+        for sleutel, uren in dag_uit_tellers(begin, meters).items():
+            if sleutel in ("import_kwh", "export_kwh"):
+                for i, kwh in uren.items():
+                    uit[sleutel][i] = round(kwh, 4)
         uit["se_tot"] = d.isoformat()
         d += timedelta(days=1)
+
+    # 2. zon en accu: vermogen per kwartier, per dag
+    uit["se_pv_tot"], d = oud.get("se_pv_tot"), start("se_pv_tot")
+    while d <= eind:
+        begin = datetime(d.year, d.month, d.day).astimezone()
+        time.sleep(SE_PAUZE)
+        zon = http(f"{SE}/sites/{site}/power?{q(begin, 1, {'resolution': 'QUARTER_HOUR', 'unit': 'W'})}", token=token)
+        toon("power", {k: (len(v) if isinstance(v, list) else v) for k, v in zon.items() if k != "values"} | {"values": len(zon.get("values") or [])})
+        time.sleep(SE_PAUZE)
+        accu = http(f"{SE}/sites/{site}/storage/telemetry?{q(begin, 1)}", token=token).get("storage") or {}
+        toon("storage", [{k: len((v or {}).get("values") or []) for k, v in b.items() if isinstance(v, dict)} for b in accu.values()])
+        for i, kwh in uur_uit_vermogen(begin, 1, zon.get("values"), zon.get("unit") or "W").items():
+            uit["opbrengst_kwh"][i] = round(kwh, 4)
+        for veld, sleutel in (("chargePower", "laad_kwh"), ("dischargePower", "ontlaad_kwh")):
+            som = {}
+            for b in accu.values():  # meerdere accu's: optellen
+                reeks = (b or {}).get(veld) or {}
+                for i, kwh in uur_uit_vermogen(begin, 1, reeks.get("values"), reeks.get("unit")).items():
+                    som[i] = som.get(i, 0) + kwh
+            for i, kwh in som.items():
+                uit[sleutel][i] = round(kwh, 4)
+        uit["se_pv_tot"] = d.isoformat()
+        d += timedelta(days=1)
+
+    # 3. verbruik uit de balans, voor elk uur waarvan zon en net bekend zijn
+    if uit["se_pv_tot"]:
+        for i in range(H):
+            g = lambda k: uit[k][i] or 0
+            if uit["opbrengst_kwh"][i] is not None and uit["import_kwh"][i] is not None:
+                uit["verbruik_kwh"][i] = round(max(0, g("opbrengst_kwh") + g("import_kwh") - g("export_kwh") + g("ontlaad_kwh") - g("laad_kwh")), 4)
     return uit
 
 
@@ -316,7 +375,7 @@ def run():
             status["solaredge"] = "niet gekoppeld"
     except Exception as e:
         status["solaredge"] = f"fout: {e}"[:200]
-        for k in (*SE_REEKS, "kwp", "se_tot", "se_versie"):  # wat er al was niet kwijtraken
+        for k in (*SE_REEKS, "kwp", "se_tot", "se_pv_tot", "se_versie"):  # wat er al was niet kwijtraken
             if oud.get(k) is not None:
                 data[k] = oud[k]
     finally:
@@ -386,6 +445,10 @@ def test():
     assert round(u["opbrengst_kwh"][i + 10], 3) == 0.5 and round(u["opbrengst_kwh"][i + 11], 3) == 0.25, u["opbrengst_kwh"]
     assert i - 1 not in u["opbrengst_kwh"] and u["opbrengst_kwh"][i] == 0  # 23:00 -> 00:00 hoort bij gisteren
     assert round(u["verbruik_kwh"][i], 3) == 1 and round(u["verbruik_kwh"][i + 10], 3) == 0.5  # zon + net in
+    # vermogen: 4 kwartieren van 2000 W in uur 12 = 2 kWh; overige uren van die dag 0
+    pw = [{"timestamp": t(12, m), "value": 2000} for m in (0, 15, 30, 45)]
+    v = uur_uit_vermogen(begin, 1, pw, "W")
+    assert round(v[i + 12], 3) == 2 and v[i + 3] == 0 and len(v) == 24, v
     print("zelftest ok")
 
 

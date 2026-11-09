@@ -362,7 +362,7 @@ function useData(d) {
   const info = { uren: {}, som: {} };
   Object.keys(d).forEach(k => { if (ok(d[k])) { let n = 0, s = 0; d[k].forEach(v => { if (v != null) { n++; s += v; } }); info.uren[k] = n; info.som[k] = s; } });
   const vol = k => (info.uren[k] || 0) >= H * 0.9;
-  info.se = d.se_versie === 2 && vol('opbrengst_kwh') && vol('verbruik_kwh');
+  info.se = d.se_versie >= 3 && vol('opbrengst_kwh') && vol('verbruik_kwh');
   info.prijzen = vol('prijs_stroom');
   info.frank = vol('f_afname_kwh');
   if (!info.se || !info.prijzen) return info;
@@ -947,7 +947,7 @@ function toon(d){
     if(!u.klaar){
       R=null;
       var w=[];
-      if(!u.se)w.push(d.se_versie===2?'SolarEdge: nog geen volledig jaar aan meetdata ('+kwh(u.uren.opbrengst_kwh||0)+' van 8.760 uur).':'SolarEdge: de meetdata wordt opnieuw opgehaald (de eerste versie las tellerstanden als uurwaarden en is weggegooid). Dat duurt ongeveer 80 minuten; daarna verschijnt hier alles.');
+      if(!u.se)w.push(d.se_versie>=3?'SolarEdge: nog geen volledig jaar aan meetdata ('+kwh(u.uren.opbrengst_kwh||0)+' van 8.760 uur).':'SolarEdge: netafname en teruglevering per uur zijn binnen; zonne-opbrengst en accu per kwartier worden nu opgehaald. Dat duurt ongeveer 80 minuten; daarna verschijnt hier alles.');
       if(!u.prijzen)w.push('Frank Energie: de uurprijzen ontbreken.');
       w.push('Data opgehaald op '+dt(d.gemaakt)+'. Voortgang zie je bij Bronnen.');
       leeg(w);
